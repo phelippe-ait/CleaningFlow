@@ -14,14 +14,12 @@ import { Users } from "./collections/Users"
 import { Clients } from "./collections/Clients"
 import { Properties } from "./collections/Properties"
 import { Jobs } from "./collections/Jobs"
-import { buildConfig } from "payload"
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 const supabaseDatabaseUrl = process.env.SUPABASE_DATABASE_URL
 
-export default buildConfig({
-  secret: process.env.PAYLOAD_SECRET || "",
+export default buildFigmaConfig({
   db: supabaseDatabaseUrl
     ? postgresAdapter({
         pool: { connectionString: supabaseDatabaseUrl },
@@ -69,5 +67,11 @@ export default buildConfig({
     outputFile: path.resolve(dirname, "payload-types.ts"),
   },
   plugins: [mcpPlugin({})],
-  
+  figma: {
+    contentSystemId:
+      process.env.FIGMA_CONTENT_API_CONTENT_SYSTEM_ID || "local-dev",
+    environmentId: process.env.FIGMA_EID || "local-dev",
+    useContentSystem: false,
+    storage: false,
+  },
 })

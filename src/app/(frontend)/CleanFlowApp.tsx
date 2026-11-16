@@ -259,6 +259,8 @@ function Field({
   type?: string
   placeholder?: string
   autoComplete?: string
+  inputMode?: "numeric"
+  pattern?: string
 }) {
   return (
     <label className="block text-sm font-medium text-slate-700">
@@ -1452,20 +1454,19 @@ function NewJobModal({
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    console.log("CREATE JOB FORM SUBMITTED")
     const data = new FormData(event.currentTarget)
     submit({
-  title: String(data.get("title")),
-  clientName: String(data.get("clientName")),
-  serviceAddress: String(data.get("serviceAddress")),
-  suburb: String(data.get("suburb") ?? ""),
-  postcode: String(data.get("postcode") ?? ""),
-  cleaner: String(data.get("cleaner")),
-  scheduledAt: String(data.get("scheduledAt")),
-  durationMinutes: Number(data.get("durationMinutes")),
-  estimatedEarnings: Number(data.get("estimatedEarnings")),
-  instructions: String(data.get("instructions")),
-})
+      title: String(data.get("title")),
+      clientName: String(data.get("clientName")),
+      serviceAddress: String(data.get("serviceAddress")),
+      suburb: String(data.get("suburb") ?? ""),
+      postcode: String(data.get("postcode") ?? ""),
+      cleaner: String(data.get("cleaner")),
+      scheduledAt: String(data.get("scheduledAt")),
+      durationMinutes: Number(data.get("durationMinutes")),
+      estimatedEarnings: Number(data.get("estimatedEarnings")),
+      instructions: String(data.get("instructions")),
+    })
   }
   return (
     <div
@@ -1513,21 +1514,14 @@ function NewJobModal({
                 className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-teal-500"
               />
             </label>
-            <div className="grid grid-cols-2 gap-4">
-  <Field
-    label="Suburb"
-    name="suburb"
-    placeholder="Carlingford"
-    
-  />
-
-  <Field
-    label="Postcode"
-    name="postcode"
-    placeholder="2118"
-    
-  />
-</div>
+            <Field label="Suburb" name="suburb" placeholder="Sydney" />
+            <Field
+              label="Postcode"
+              name="postcode"
+              inputMode="numeric"
+              pattern="[0-9]{4}"
+              placeholder="2000"
+            />
             <label className="block text-sm font-medium text-slate-700">
               Assign cleaner
               <select

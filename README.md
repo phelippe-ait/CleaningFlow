@@ -69,9 +69,10 @@ project's Auth trigger). The manager provisioning command creates the Supabase
 Auth account and Payload manager record; it does not install the application
 database schema.
 
-Apply the SQL migration in
-[`supabase/migrations/20261110000000_grant_service_role_profiles_access.sql`](./supabase/migrations/20261110000000_grant_service_role_profiles_access.sql)
-to grant the server-side service role the required access to `profiles`.
+Apply every SQL file in [`supabase/migrations`](./supabase/migrations), in
+filename order. The grants migrations give the authenticated role the read
+access needed by the dashboard and give the server-side service role the
+access needed for manager-only provisioning and job creation.
 
 With the required Supabase schema and environment variables in place, run:
 
