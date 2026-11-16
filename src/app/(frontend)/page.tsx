@@ -13,14 +13,20 @@ export default async function HomePage() {
   const [jobsResult, cleanersResult, clientsResult, propertiesResult] =
     await Promise.all([
       supabase
-        .from("jobs")
-        .select(`
-          id, title, scheduled_start, scheduled_end, status, instructions, estimated_earnings,
-          properties ( address_line1, clients ( full_name ) ),
-          profiles!jobs_cleaner_id_fkey ( id, full_name )
-        `)
-        .order("scheduled_start", { ascending: true })
-        .limit(100),
+  .from("jobs")
+  .select(`
+    id, title, scheduled_start, scheduled_end,
+    status, instructions, estimated_earnings,
+    properties ( address_line1, clients ( full_name ) ),
+    profiles!jobs_cleaner_id_fkey ( id, full_name ),
+    checklist_items (
+      id,
+      task_name,
+      sort_order
+    )
+  `)
+  .order("scheduled_start", { ascending: true })
+  .limit(100),
       isManager
         ? supabase
             .from("profiles")
@@ -61,8 +67,17 @@ export default async function HomePage() {
       scheduledAt: job.scheduled_start,
       durationMinutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_000)),
       estimatedEarnings: Number(job.estimated_earnings ?? 0),
-      status: job.status as "scheduled" | "accepted" | "in-progress" | "completed",
+      status: (
+  job.status === "in_progress" ? "in-progress" : job.status
+) as "scheduled" | "accepted" | "in-progress" | "completed",
       instructions: job.instructions,
+            checklist: (job.checklist_items ?? [])
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((item) => ({
+          id: item.id,
+          task: item.task_name,
+          completed: false,
+        })),
     }
   })
 

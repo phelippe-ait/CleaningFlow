@@ -699,17 +699,29 @@ export function Dashboard({
           cleaners={cleaners}
           pending={pending}
           close={() => setNewJob(false)}
-          submit={(data) =>
-            startTransition(async () => {
-              const result = await createJobAction(data)
-              if (!result.ok) setNotice(result.error)
-              else {
-                setNotice("Job created and assigned.")
-                setNewJob(false)
-                router.refresh()
-              }
-            })
-          }
+          submit={(data) => {
+  console.log("JOB DATA:", data)
+
+  startTransition(async () => {
+    try {
+      const result = await createJobAction(data)
+
+      console.log("CREATE JOB RESULT:", result)
+
+      if (!result.ok) {
+        console.error("CREATE JOB ERROR:", result.error)
+        setNotice(result.error)
+      } else {
+        setNotice("Job created and assigned.")
+        setNewJob(false)
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("CREATE JOB EXCEPTION:", error)
+      setNotice("Failed to create job. Check the console.")
+    }
+  })
+}}
         />
       )}
       {newCleaner && (
@@ -1331,6 +1343,9 @@ function NewCleanerModal({
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+  
+
     const data = new FormData(event.currentTarget)
     submit({
       name: String(data.get("name")),
@@ -1437,17 +1452,20 @@ function NewJobModal({
 }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    console.log("CREATE JOB FORM SUBMITTED")
     const data = new FormData(event.currentTarget)
     submit({
-      title: String(data.get("title")),
-      clientName: String(data.get("clientName")),
-      serviceAddress: String(data.get("serviceAddress")),
-      cleaner: String(data.get("cleaner")),
-      scheduledAt: String(data.get("scheduledAt")),
-      durationMinutes: Number(data.get("durationMinutes")),
-      estimatedEarnings: Number(data.get("estimatedEarnings")),
-      instructions: String(data.get("instructions")),
-    })
+  title: String(data.get("title")),
+  clientName: String(data.get("clientName")),
+  serviceAddress: String(data.get("serviceAddress")),
+  suburb: String(data.get("suburb") ?? ""),
+  postcode: String(data.get("postcode") ?? ""),
+  cleaner: String(data.get("cleaner")),
+  scheduledAt: String(data.get("scheduledAt")),
+  durationMinutes: Number(data.get("durationMinutes")),
+  estimatedEarnings: Number(data.get("estimatedEarnings")),
+  instructions: String(data.get("instructions")),
+})
   }
   return (
     <div
@@ -1495,6 +1513,21 @@ function NewJobModal({
                 className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-teal-500"
               />
             </label>
+            <div className="grid grid-cols-2 gap-4">
+  <Field
+    label="Suburb"
+    name="suburb"
+    placeholder="Carlingford"
+    
+  />
+
+  <Field
+    label="Postcode"
+    name="postcode"
+    placeholder="2118"
+    
+  />
+</div>
             <label className="block text-sm font-medium text-slate-700">
               Assign cleaner
               <select

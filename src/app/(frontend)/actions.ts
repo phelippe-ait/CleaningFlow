@@ -80,5 +80,14 @@ export async function createJobAction(data: { title: string; clientName: string;
     const { error: checklistError } = await admin.from("checklist_items").insert([{ job_id: job.id, task_name: "Kitchen surfaces and sink", sort_order: 1 }, { job_id: job.id, task_name: "Bathrooms and mirrors", sort_order: 2 }, { job_id: job.id, task_name: "Vacuum and mop floors", sort_order: 3 }, { job_id: job.id, task_name: "Final quality check", sort_order: 4 }])
     if (checklistError) throw checklistError
     return { ok: true }
-  } catch (error) { return { ok: false, error: messageFor(error) } }
+  } catch (error) {
+  console.error("CREATE JOB SERVER ERROR:", error)
+
+  return {
+    ok: false,
+    error: error instanceof Error
+      ? error.message
+      : "Unknown server error",
+  }
+}
 }

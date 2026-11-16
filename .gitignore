@@ -7,6 +7,7 @@ dist/
 .env
 .env.*
 !.env.example
+.env.local
 *.db
 *.db-shm
 *.db-wal
