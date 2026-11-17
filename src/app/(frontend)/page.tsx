@@ -20,10 +20,13 @@ export default async function HomePage() {
     properties ( address_line1, clients ( full_name ) ),
     profiles!jobs_cleaner_id_fkey ( id, full_name ),
     checklist_items (
-      id,
-      task_name,
-      sort_order
-    )
+  id,
+  task_name,
+  sort_order,
+  job_checklist_progress (
+    is_completed
+  )
+)
   `)
   .order("scheduled_start", { ascending: true })
   .limit(100),
@@ -72,12 +75,18 @@ export default async function HomePage() {
 ) as "scheduled" | "accepted" | "in-progress" | "completed",
       instructions: job.instructions,
             checklist: (job.checklist_items ?? [])
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map((item) => ({
-          id: item.id,
-          task: item.task_name,
-          completed: false,
-        })),
+  .sort((a, b) => a.sort_order - b.sort_order)
+  .map((item) => ({
+    id: item.id,
+    task: item.task_name,
+    completed: (
+      Array.isArray(item.job_checklist_progress)
+        ? item.job_checklist_progress
+        : item.job_checklist_progress
+          ? [item.job_checklist_progress]
+          : []
+    ).some((progress) => progress.is_completed === true),
+  })),
     }
   })
 

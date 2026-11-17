@@ -20,7 +20,7 @@ export default function AppError({
         </p>
         <button
           className="mt-7 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white"
-          onClick={() => unstable_retry()}
+         onClick={() => window.location.reload()}
         >
           Reload workspace
         </button>

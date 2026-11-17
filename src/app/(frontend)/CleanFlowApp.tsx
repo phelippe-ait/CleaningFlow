@@ -14,6 +14,7 @@ import {
   loginAction,
   logoutAction,
   updateJobStatusAction,
+  updateChecklistAction,
 } from "./actions"
 
 type Cleaner = {
@@ -340,6 +341,38 @@ export function Dashboard({
     })
   }
 
+  function toggleChecklist(
+  checklistItemId: string,
+  completed: boolean
+) {
+  startTransition(async () => {
+    const result = await updateChecklistAction(
+      checklistItemId,
+      completed
+    )
+
+    if (!result.ok) {
+      setNotice(result.error)
+    } else {
+      setSelected((current) => {
+        if (!current) return null
+
+        return {
+          ...current,
+          checklist: current.checklist?.map((item) =>
+            item.id === checklistItemId
+              ? { ...item, completed }
+              : item
+          ),
+        }
+      })
+
+      setNotice("Checklist updated.")
+      router.refresh()
+    }
+  })
+}
+
   function signOut() {
     startTransition(async () => {
       await logoutAction()
@@ -370,6 +403,7 @@ export function Dashboard({
         setSelected={setSelected}
         changeStatus={changeStatus}
         signOut={signOut}
+        toggleChecklist={toggleChecklist}
       />
     )
   }
@@ -754,6 +788,7 @@ export function Dashboard({
           isManager
           close={() => setSelected(null)}
           changeStatus={changeStatus}
+          toggleChecklist={toggleChecklist}
         />
       )}
     </main>
@@ -769,6 +804,7 @@ function CleanerWorkspace({
   setNotice,
   setSelected,
   changeStatus,
+  toggleChecklist,
   signOut,
 }: {
   user: DashboardProps["user"]
@@ -779,6 +815,10 @@ function CleanerWorkspace({
   setNotice: (notice: string) => void
   setSelected: (job: Job | null) => void
   changeStatus: (job: Job, status: Job["status"]) => void
+  toggleChecklist: (
+  checklistItemId: string,
+  completed: boolean
+) => void
   signOut: () => void
 }) {
   const [view, setView] = useState<"My day" | "All jobs" | "Earnings">("My day")
@@ -1087,6 +1127,7 @@ function CleanerWorkspace({
           isManager={false}
           close={() => setSelected(null)}
           changeStatus={changeStatus}
+          toggleChecklist={toggleChecklist}
         />
       )}
     </main>
@@ -1599,12 +1640,17 @@ function JobDrawer({
   isManager,
   close,
   changeStatus,
+  toggleChecklist,
 }: {
   job: Job
   pending: boolean
   isManager: boolean
   close: () => void
   changeStatus: (job: Job, status: Job["status"]) => void
+  toggleChecklist: (
+    checklistItemId: string,
+    completed: boolean
+  ) => void
 }) {
   return (
     <div
@@ -1693,10 +1739,21 @@ function JobDrawer({
                     { task: "Final quality check" },
                   ]
               ).map((item, index) => (
-                <div
-                  key={item.id || index}
-                  className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 text-sm"
-                >
+                <button
+  type="button"
+  key={item.id || index}
+  disabled={
+    pending ||
+    isManager ||
+    !item.id
+  }
+  onClick={() => {
+    if (item.id) {
+      toggleChecklist(item.id, !item.completed)
+    }
+  }}
+  className="flex w-full items-center gap-3 rounded-xl border border-slate-100 p-3 text-left text-sm transition-colors hover:bg-slate-50 disabled:cursor-default"
+>
                   <span
                     className={`grid size-6 place-items-center rounded-lg border ${
                       item.completed
@@ -1707,7 +1764,7 @@ function JobDrawer({
                     <Icon name="check" className="size-3.5" />
                   </span>
                   {item.task}
-                </div>
+                </button>
               ))}
             </div>
           </div>

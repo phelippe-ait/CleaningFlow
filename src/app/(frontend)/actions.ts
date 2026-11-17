@@ -83,11 +83,55 @@ export async function createJobAction(data: { title: string; clientName: string;
   } catch (error) {
   console.error("CREATE JOB SERVER ERROR:", error)
 
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" &&
+          error !== null &&
+          "message" in error
+        ? String(error.message)
+        : String(error)
+
   return {
     ok: false,
-    error: error instanceof Error
-      ? error.message
-      : "Unknown server error",
+    error: message,
   }
 }
+
+
+}
+
+export async function updateChecklistAction(
+  checklistItemId: string,
+  completed: boolean
+): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user) {
+    return { ok: false, error: "Your session has expired." }
+  }
+
+  if (user.role !== "cleaner") {
+    return { ok: false, error: "Cleaner access required." }
+  }
+
+  const supabase = await createSupabaseServerClient()
+
+  const { error } = await supabase
+    .from("job_checklist_progress")
+    .upsert(
+      {
+        checklist_item_id: checklistItemId,
+        completed_by: user.id,
+        is_completed: completed,
+        completed_at: completed ? new Date().toISOString() : null,
+      },
+      { onConflict: "checklist_item_id" }
+    )
+
+  if (error) {
+    return { ok: false, error: error.message }
+  }
+
+  return { ok: true }
 }
