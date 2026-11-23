@@ -4,6 +4,7 @@ import {
   useMemo,
   useState,
   useTransition,
+  useEffect,
   type FormEvent,
   type ReactNode,
 } from "react"
@@ -17,6 +18,7 @@ import {
   updateJobAction,
   updateChecklistAction,
   toggleJobArchiveAction,
+  
 } from "./actions"
 
 type Cleaner = {
@@ -34,7 +36,9 @@ type Job = {
 postcode?: string
   cleaner: Cleaner | string
   scheduledAt: string
-  durationMinutes: number
+actualStart: string | null
+actualEnd: string | null
+durationMinutes: number
   estimatedEarnings: number
   status: "scheduled" | "accepted" | "in-progress" | "completed"
   instructions?: string | null
@@ -1322,7 +1326,7 @@ function CleanerJobGrid({
               {job.durationMinutes} min · {money(job.estimatedEarnings)}
             </p>
             <button
-              disabled={pending || job.status === "completed"}
+              disabled={pending}
               onClick={() =>
                 job.status === "completed" ? onOpen(job) : onAction(job)
               }
@@ -2060,6 +2064,83 @@ function handleSubmit(event: FormEvent<HTMLFormElement>) {
   )
 }
 
+function JobTimer({
+  actualStart,
+  actualEnd,
+}: {
+  actualStart: string
+  actualEnd: string | null
+}) {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (actualEnd) return
+
+    setNow(Date.now())
+
+    const interval = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [actualStart, actualEnd])
+
+  const start = new Date(actualStart).getTime()
+  const end = actualEnd ? new Date(actualEnd).getTime() : now
+
+  const totalSeconds = Math.max(0, Math.floor((end - start) / 1000))
+
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  const formattedTime = [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":")
+
+  return (
+    <div className="mt-5 rounded-2xl border border-teal-100 bg-teal-50 p-5 text-center">
+      <p className="text-xs font-semibold uppercase tracking-wider text-teal-700">
+        {actualEnd ? "Total time worked" : "Time worked"}
+      </p>
+
+      <p className="mt-2 text-4xl font-bold tabular-nums text-teal-900">
+        {formattedTime}
+      </p>
+
+      <p className="mt-2 text-sm text-teal-700">
+        {actualEnd ? "Job completed" : "Timer running"}
+      </p>
+
+      <div className="mt-4 space-y-2 border-t border-teal-200 pt-4 text-sm">
+  <div className="flex justify-between">
+    <span>Started at</span>
+    <strong>
+      {new Date(actualStart).toLocaleTimeString("en-AU", {
+        hour: "numeric",
+        minute: "2-digit",
+      })}
+    </strong>
+  </div>
+
+  {actualEnd && (
+    <div className="flex justify-between">
+      <span>Completed at</span>
+      <strong>
+        {new Date(actualEnd).toLocaleTimeString("en-AU", {
+          hour: "numeric",
+          minute: "2-digit",
+        })}
+      </strong>
+    </div>
+  )}
+</div>
+
+    </div>
+  )
+}
+
+
 function JobDrawer({
   job,
   pending,
@@ -2099,6 +2180,13 @@ function JobDrawer({
           <h2 className="mt-5 text-3xl font-semibold tracking-tight">
             {job.title}
           </h2>
+
+          {job.actualStart && (
+  <JobTimer
+    actualStart={job.actualStart}
+    actualEnd={job.actualEnd}
+  />
+)}
 
           {isManager && (
   <button

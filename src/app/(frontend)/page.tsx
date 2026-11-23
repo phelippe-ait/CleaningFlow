@@ -16,7 +16,8 @@ export default async function HomePage() {
   .from("jobs")
   .select(`
     id, title, scheduled_start, scheduled_end,
-    status, instructions, estimated_earnings,
+actual_start, actual_end,
+status, instructions, estimated_earnings,
     properties ( address_line1, suburb, postcode, clients ( full_name ) ),
     profiles!jobs_cleaner_id_fkey ( id, full_name ),
     checklist_items (
@@ -86,7 +87,9 @@ postcode: property?.postcode ?? "",
         ? { id: cleaner.id, name: cleaner.full_name, email: "" }
         : "Unassigned",
       scheduledAt: job.scheduled_start,
-      durationMinutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_000)),
+actualStart: job.actual_start,
+actualEnd: job.actual_end,
+durationMinutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_000)),
       estimatedEarnings: Number(job.estimated_earnings ?? 0),
       status: (
   job.status === "in_progress" ? "in-progress" : job.status
