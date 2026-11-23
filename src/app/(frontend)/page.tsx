@@ -17,7 +17,7 @@ export default async function HomePage() {
   .select(`
     id, title, scheduled_start, scheduled_end,
     status, instructions, estimated_earnings,
-    properties ( address_line1, clients ( full_name ) ),
+    properties ( address_line1, suburb, postcode, clients ( full_name ) ),
     profiles!jobs_cleaner_id_fkey ( id, full_name ),
     checklist_items (
   id,
@@ -64,6 +64,8 @@ export default async function HomePage() {
       title: job.title,
       clientName: client?.full_name ?? "Client",
       serviceAddress: property?.address_line1 ?? "Address unavailable",
+      suburb: property?.suburb ?? "",
+postcode: property?.postcode ?? "",
       cleaner: cleaner
         ? { id: cleaner.id, name: cleaner.full_name, email: "" }
         : "Unassigned",

@@ -14,6 +14,7 @@ import {
   loginAction,
   logoutAction,
   updateJobStatusAction,
+  updateJobAction,
   updateChecklistAction,
 } from "./actions"
 
@@ -27,6 +28,8 @@ type Job = {
   title: string
   clientName: string
   serviceAddress: string
+  suburb?: string
+postcode?: string
   cleaner: Cleaner | string
   scheduledAt: string
   durationMinutes: number
@@ -1493,7 +1496,34 @@ function NewJobModal({
   close: () => void
   submit: (data: Parameters<typeof createJobAction>[0]) => void
 }) {
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+
+  const [checklistTasks, setChecklistTasks] = useState<string[]>([
+  "Kitchen surfaces and sink",
+  "Bathrooms and mirrors",
+  "Vacuum and mop floors",
+  "Final quality check",
+])
+
+const [newChecklistTask, setNewChecklistTask] = useState("")
+
+function addChecklistTask() {
+  const task = newChecklistTask.trim()
+
+  if (!task) return
+
+  setChecklistTasks((current) => [...current, task])
+  setNewChecklistTask("")
+}
+
+function removeChecklistTask(index: number) {
+  setChecklistTasks((current) =>
+    current.filter((_, itemIndex) => itemIndex !== index)
+  )
+}
+
+
+
+function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     submit({
@@ -1507,6 +1537,7 @@ function NewJobModal({
       durationMinutes: Number(data.get("durationMinutes")),
       estimatedEarnings: Number(data.get("estimatedEarnings")),
       instructions: String(data.get("instructions")),
+      checklistTasks: checklistTasks,
     })
   }
   return (
@@ -1604,6 +1635,55 @@ function NewJobModal({
                 className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-teal-500"
               />
             </label>
+                  <div className="sm:col-span-2 space-y-3">
+  <label className="block text-sm font-medium text-slate-700">
+    Cleaning checklist
+  </label>
+
+  <p className="text-xs text-slate-500">
+    Add or remove tasks for this cleaning job.
+  </p>
+
+  <div className="space-y-2">
+    {checklistTasks.map((task, index) => (
+      <div
+        key={index}
+        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+      >
+        <span className="flex-1 text-sm text-slate-700">
+          {task}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => removeChecklistTask(index)}
+          className="text-sm font-medium text-red-500"
+        >
+          Remove
+        </button>
+      </div>
+    ))}
+  </div>
+
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={newChecklistTask}
+      onChange={(event) => setNewChecklistTask(event.target.value)}
+      placeholder="Add a cleaning task..."
+      className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm"
+    />
+
+    <button
+      type="button"
+      onClick={addChecklistTask}
+      className="rounded-xl bg-teal-600 px-4 py-3 text-sm font-medium text-white"
+    >
+      Add
+    </button>
+  </div>
+</div>
+            
             <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
               <button
                 type="button"
@@ -1652,6 +1732,8 @@ function JobDrawer({
     completed: boolean
   ) => void
 }) {
+  const [editing, setEditing] = useState(false)
+
   return (
     <div
       className="fixed inset-0 z-50 bg-slate-950/35 backdrop-blur-sm"
@@ -1671,6 +1753,178 @@ function JobDrawer({
           <h2 className="mt-5 text-3xl font-semibold tracking-tight">
             {job.title}
           </h2>
+
+          {isManager && (
+  <button
+    type="button"
+    onClick={() => setEditing(true)}
+    className="mt-3 rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+  >
+    Edit job
+  </button>
+  
+)}
+{editing && isManager && (
+  <form
+  onSubmit={(event) => {
+    event.preventDefault()
+
+    const form = new FormData(event.currentTarget)
+
+    const scheduledAt = String(form.get("scheduledAt"))
+    const start = new Date(scheduledAt)
+
+    if (Number.isNaN(start.getTime())) {
+      alert("Please enter a valid date and time.")
+      return
+    }
+
+    void (async () => {
+      const result = await updateJobAction(job.id, {
+        title: String(form.get("title") ?? ""),
+        scheduledAt: start.toISOString(),
+        durationMinutes: Number(form.get("durationMinutes")),
+        estimatedEarnings: Number(form.get("estimatedEarnings")),
+        instructions: String(form.get("instructions") ?? ""),
+        serviceAddress: String(form.get("serviceAddress") ?? ""),
+suburb: String(form.get("suburb") ?? ""),
+postcode: String(form.get("postcode") ?? ""),
+      })
+
+      if (!result.ok) {
+        alert(result.error)
+        return
+      }
+
+      setEditing(false)
+      window.location.reload()
+    })()
+  }}
+    className="mt-4 space-y-4 rounded-2xl border border-teal-200 bg-teal-50 p-4"
+  >
+    <h3 className="text-lg font-semibold">
+      Edit cleaning job
+    </h3>
+
+    <label className="block text-sm font-medium">
+      Job title
+      <input
+        name="title"
+        type="text"
+        defaultValue={job.title}
+        required
+        className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+      />
+    </label>
+
+
+<label className="block text-sm font-medium">
+  Service address
+  <input
+    name="serviceAddress"
+    type="text"
+    defaultValue={job.serviceAddress}
+    required
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+  />
+</label>
+
+<label className="block text-sm font-medium">
+  Suburb
+  <input
+    name="suburb"
+    type="text"
+    defaultValue={job.suburb ?? ""}
+    required
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+  />
+</label>
+
+<label className="block text-sm font-medium">
+  Postcode
+  <input
+    name="postcode"
+    type="text"
+    defaultValue={job.postcode ?? ""}
+    required
+    maxLength={4}
+    pattern="[0-9]{4}"
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+  />
+</label>
+
+
+      <label className="block text-sm font-medium">
+  Date and time
+  <input
+    name="scheduledAt"
+    type="datetime-local"
+    defaultValue={(() => {
+      const date = new Date(job.scheduledAt)
+      const local = new Date(
+        date.getTime() - date.getTimezoneOffset() * 60000
+      )
+      return local.toISOString().slice(0, 16)
+    })()}
+    required
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+  />
+</label>
+
+<label className="block text-sm font-medium">
+  Duration (minutes)
+  <input
+    name="durationMinutes"
+    type="number"
+    min="15"
+    step="1"
+    defaultValue={job.durationMinutes}
+    required
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+  />
+</label>
+
+    <label className="block text-sm font-medium">
+      Instructions
+      <textarea
+        name="instructions"
+        defaultValue={job.instructions ?? ""}
+        rows={3}
+        className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+      />
+    </label>
+
+    <label className="block text-sm font-medium">
+      Estimated earnings (AUD)
+      <input
+        name="estimatedEarnings"
+        type="number"
+        min="0"
+        step="0.01"
+        defaultValue={job.estimatedEarnings}
+        className="mt-2 w-full rounded-xl border border-slate-200 bg-white p-3"
+      />
+    </label>
+
+    <div className="flex gap-3">
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+      >
+        Cancel
+      </button>
+
+      <button
+        type="submit"
+        className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-semibold text-white"
+      >
+        Save changes
+      </button>
+    </div>
+  </form>
+)}
+
           <p className="mt-2 text-slate-500">{job.clientName}</p>
         </div>
         <div className="flex-1 space-y-7 p-6">
