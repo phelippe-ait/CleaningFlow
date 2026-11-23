@@ -315,6 +315,7 @@ export function Dashboard({
   const [selected, setSelected] = useState<Job | null>(null)
   const [notice, setNotice] = useState("")
   const [pending, startTransition] = useTransition()
+  const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list")
   const manager = user.role === "manager"
 
   const filtered = useMemo(
@@ -566,15 +567,32 @@ const archived = jobs.filter(
               </p>
             </div>
             {tab === "Schedule" && (
-              <div className="rounded-xl border border-slate-200 bg-white p-1">
-                <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white">
-                  List
-                </button>
-                <button className="px-4 py-2 text-sm font-medium text-slate-500">
-                  Calendar
-                </button>
-              </div>
-            )}
+  <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+    <button
+      type="button"
+      onClick={() => setScheduleView("list")}
+      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+        scheduleView === "list"
+          ? "bg-slate-950 text-white"
+          : "text-slate-500 hover:bg-slate-50"
+      }`}
+    >
+      List
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setScheduleView("calendar")}
+      className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+        scheduleView === "calendar"
+          ? "bg-slate-950 text-white"
+          : "text-slate-500 hover:bg-slate-50"
+      }`}
+    >
+      Calendar
+    </button>
+  </div>
+)}
           </div>
 
           {tab === "Overview" && (
@@ -693,12 +711,19 @@ const archived = jobs.filter(
           )}
 
           {tab === "Schedule" && (
-            <JobList
-              title={`${filtered.length} scheduled jobs`}
-              jobs={filtered}
-              onSelect={setSelected}
-            />
-          )}
+  scheduleView === "list" ? (
+    <JobList
+      title={`${filtered.length} scheduled jobs`}
+      jobs={filtered}
+      onSelect={setSelected}
+    />
+  ) : (
+    <JobCalendar
+  jobs={filtered}
+  onSelect={setSelected}
+/>
+  )
+)}
           {tab === "Clients" && (
             <EmptyPanel
               icon="users"
@@ -857,7 +882,7 @@ function CleanerWorkspace({
   restoreJob: (jobId: string) => void
 }) {
   const [view, setView] = useState<
-  "My day" | "All jobs" | "Earnings" | "Archived"
+  "My day" | "All jobs" | "Calendar" | "Earnings" | "Archived"
 >("My day")
   const activeJobs = jobs.filter(
   (job) => job.status !== "completed" && !job.archived
@@ -944,7 +969,7 @@ const archivedJobs = jobs.filter(
             </p>
           </div>
           <div className="hidden rounded-xl border border-slate-200 bg-white p-1 md:flex">
-            {(["My day", "All jobs", "Earnings", "Archived"] as const).map((item) => (
+            {(["My day", "All jobs", "Calendar", "Earnings", "Archived"] as const).map((item) => (
               <button
                 key={item}
                 onClick={() => setView(item)}
@@ -959,6 +984,15 @@ const archivedJobs = jobs.filter(
             ))}
           </div>
         </div>
+
+            {view === "Calendar" && (
+  <div className="mt-8">
+    <JobCalendar
+      jobs={jobs.filter((job) => !job.archived)}
+      onSelect={setSelected}
+    />
+  </div>
+)}
 
         {view === "My day" && (
           <>
@@ -1197,13 +1231,14 @@ const archivedJobs = jobs.filter(
   </section>
 )}
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white/95 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white/95 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
         {([
-          ["My day", "grid"],
-["All jobs", "briefcase"],
-["Earnings", "money"],
-["Archived", "clock"],
-        ] as [typeof view, IconName][]).map(([item, icon]) => (
+  ["My day", "grid"],
+  ["All jobs", "briefcase"],
+  ["Calendar", "calendar"],
+  ["Earnings", "money"],
+  ["Archived", "clock"],
+] as [typeof view, IconName][]).map(([item, icon]) => (
           <button
             key={item}
             onClick={() => setView(item)}
@@ -1335,6 +1370,223 @@ function Metric({
         </span>
       </div>
       <p className="mt-4 text-xs text-slate-400">{detail}</p>
+    </div>
+  )
+}
+
+function JobCalendar({
+  jobs,
+  onSelect,
+}: {
+  jobs: Job[]
+  onSelect: (job: Job) => void
+}) {
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const today = new Date()
+    return new Date(today.getFullYear(), today.getMonth(), 1)
+  })
+
+  const [selectedDay, setSelectedDay] = useState(() =>
+  new Date().getDate()
+)
+
+  const year = currentMonth.getFullYear()
+  const month = currentMonth.getMonth()
+
+  const today = new Date()
+
+function isToday(day: number) {
+  return (
+    day === today.getDate() &&
+    month === today.getMonth() &&
+    year === today.getFullYear()
+  )
+}
+
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const monthLabel = new Intl.DateTimeFormat("en-AU", {
+    month: "long",
+    year: "numeric",
+  }).format(currentMonth)
+
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  const cells = [
+    ...Array(firstDay).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+
+  function changeMonth(offset: number) {
+  setCurrentMonth(new Date(year, month + offset, 1))
+  setSelectedDay(1)
+}
+
+  function jobsForDay(day: number) {
+    return jobs.filter((job) => {
+      const date = new Date(job.scheduledAt)
+
+      return (
+        date.getFullYear() === year &&
+        date.getMonth() === month &&
+        date.getDate() === day
+      )
+    })
+  }
+
+  const statusColors: Record<Job["status"], string> = {
+    scheduled: "bg-sky-50 text-sky-700",
+    accepted: "bg-violet-50 text-violet-700",
+    "in-progress": "bg-amber-50 text-amber-700",
+    completed: "bg-emerald-50 text-emerald-700",
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 p-5">
+        <h2 className="text-lg font-semibold text-slate-900">
+          {monthLabel}
+        </h2>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => changeMonth(-1)}
+            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+          >
+            ←
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setCurrentMonth(new Date(
+              new Date().getFullYear(),
+              new Date().getMonth(),
+              1
+            ))}
+            className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50"
+          >
+            Today
+          </button>
+
+          <button
+            type="button"
+            onClick={() => changeMonth(1)}
+            className="rounded-lg border px-3 py-2 hover:bg-slate-50"
+          >
+            →
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 border-b border-slate-200">
+        {weekdays.map((day) => (
+          <div
+            key={day}
+            className="py-3 text-center text-xs font-semibold text-slate-500"
+          >
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7">
+        {cells.map((day, index) => (
+          <div
+           key={index}
+             className="min-h-14 border-b border-r border-slate-100 p-1 sm:min-h-28 sm:p-2"
+          >
+            {day !== null && (
+              <>
+                <button
+  type="button"
+  onClick={() => setSelectedDay(day)}
+  className={`inline-flex size-8 items-center justify-center rounded-full text-sm font-semibold transition ${
+    isToday(day)
+      ? "bg-teal-600 text-white"
+      : selectedDay === day
+        ? "bg-teal-100 text-teal-800"
+        : "text-slate-700 hover:bg-slate-100"
+  }`}
+>
+  {day}
+</button>
+  {jobsForDay(day).length > 0 && (
+  <div className="mt-1 flex justify-center sm:hidden">
+    <span className="size-1.5 rounded-full bg-teal-500" />
+  </div>
+)}
+                <div className="mt-2 hidden space-y-1 sm:block">
+                  {jobsForDay(day).map((job) => (
+                    <button
+                      key={job.id}
+                      type="button"
+                      onClick={() => onSelect(job)}
+                      className={`block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium hover:opacity-75 ${
+                        statusColors[job.status]
+                      }`}
+                      title={job.title}
+                    >
+                      {new Date(job.scheduledAt).toLocaleTimeString(
+                        "en-AU",
+                        { hour: "numeric", minute: "2-digit" }
+                      )}{" "}
+                      {job.title}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+<div className="border-t border-slate-200 p-4 sm:hidden">
+  <h3 className="mb-3 font-semibold text-slate-900">
+    {new Date(year, month, selectedDay).toLocaleDateString("en-AU", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })}
+  </h3>
+
+  {jobsForDay(selectedDay).length === 0 ? (
+    <p className="text-sm text-slate-500">
+      No jobs scheduled for this day.
+    </p>
+  ) : (
+    <div className="space-y-2">
+      {jobsForDay(selectedDay).map((job) => (
+        <button
+          key={job.id}
+          type="button"
+          onClick={() => onSelect(job)}
+          className="w-full rounded-xl border border-slate-200 p-3 text-left hover:border-teal-300"
+        >
+          <p className="font-semibold text-slate-900">
+            {job.title}
+          </p>
+
+          <p className="mt-1 text-sm text-slate-500">
+            {new Date(job.scheduledAt).toLocaleTimeString("en-AU", {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+            {" · "}
+            {job.serviceAddress}
+          </p>
+
+          <span className="mt-2 inline-block text-xs font-medium capitalize text-teal-700">
+            {job.status}
+          </span>
+        </button>
+      ))}
+    </div>
+  )}
+</div>
+
+
     </div>
   )
 }
