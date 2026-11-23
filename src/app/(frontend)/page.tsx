@@ -45,6 +45,21 @@ export default async function HomePage() {
         : Promise.resolve({ count: 0, error: null }),
     ])
 
+    const archivedResult = isManager
+  ? { data: [], error: null }
+  : await supabase
+      .from("archived_jobs")
+      .select("job_id")
+      .eq("cleaner_id", user.id)
+
+if (archivedResult.error) {
+  throw new Error("Could not load archived jobs.")
+}
+
+const archivedJobIds = new Set(
+  (archivedResult.data ?? []).map((item) => item.job_id)
+)
+
   if (jobsResult.error || cleanersResult.error || clientsResult.error || propertiesResult.error) {
     throw new Error("Could not load the CleanFlow workspace.")
   }
@@ -61,6 +76,7 @@ export default async function HomePage() {
 
     return {
       id: job.id,
+      archived: archivedJobIds.has(job.id),
       title: job.title,
       clientName: client?.full_name ?? "Client",
       serviceAddress: property?.address_line1 ?? "Address unavailable",

@@ -16,6 +16,7 @@ import {
   updateJobStatusAction,
   updateJobAction,
   updateChecklistAction,
+  toggleJobArchiveAction,
 } from "./actions"
 
 type Cleaner = {
@@ -25,6 +26,7 @@ type Cleaner = {
 }
 type Job = {
   id: string
+  archived: boolean
   title: string
   clientName: string
   serviceAddress: string
@@ -318,6 +320,7 @@ export function Dashboard({
   const filtered = useMemo(
     () =>
       jobs.filter((job) =>
+        (manager || !job.archived) &&
         `${job.title} ${job.clientName} ${job.serviceAddress}`
           .toLowerCase()
           .includes(query.toLowerCase()),
@@ -325,7 +328,18 @@ export function Dashboard({
     [jobs, query],
   )
   const upcoming = filtered.filter((job) => job.status !== "completed")
-  const completed = jobs.filter((job) => job.status === "completed")
+  const completed = jobs.filter(
+  (job) =>
+    job.status === "completed" &&
+    (manager || !job.archived)
+)
+
+const archived = jobs.filter(
+  (job) =>
+    !manager &&
+    job.status === "completed" &&
+    job.archived
+)
   const earnings = jobs.reduce(
     (sum, job) =>
       sum + (job.status === "completed" ? job.estimatedEarnings : 0),
@@ -343,6 +357,21 @@ export function Dashboard({
       }
     })
   }
+
+
+  function restoreJob(jobId: string) {
+  startTransition(async () => {
+    const result = await toggleJobArchiveAction(jobId, false)
+
+    if (!result.ok) {
+      setNotice(result.error)
+    } else {
+      setSelected(null)
+      setNotice("Job restored successfully.")
+      router.refresh()
+    }
+  })
+}
 
   function toggleChecklist(
   checklistItemId: string,
@@ -407,6 +436,7 @@ export function Dashboard({
         changeStatus={changeStatus}
         signOut={signOut}
         toggleChecklist={toggleChecklist}
+        restoreJob={restoreJob}
       />
     )
   }
@@ -809,6 +839,7 @@ function CleanerWorkspace({
   changeStatus,
   toggleChecklist,
   signOut,
+  restoreJob,
 }: {
   user: DashboardProps["user"]
   jobs: Job[]
@@ -823,10 +854,22 @@ function CleanerWorkspace({
   completed: boolean
 ) => void
   signOut: () => void
+  restoreJob: (jobId: string) => void
 }) {
-  const [view, setView] = useState<"My day" | "All jobs" | "Earnings">("My day")
-  const activeJobs = jobs.filter((job) => job.status !== "completed")
-  const completedJobs = jobs.filter((job) => job.status === "completed")
+  const [view, setView] = useState<
+  "My day" | "All jobs" | "Earnings" | "Archived"
+>("My day")
+  const activeJobs = jobs.filter(
+  (job) => job.status !== "completed" && !job.archived
+)
+
+const completedJobs = jobs.filter(
+  (job) => job.status === "completed" && !job.archived
+)
+
+const archivedJobs = jobs.filter(
+  (job) => job.status === "completed" && job.archived
+)
   const nextShift = activeJobs[0]
   const earned = completedJobs.reduce(
     (total, job) => total + job.estimatedEarnings,
@@ -901,7 +944,7 @@ function CleanerWorkspace({
             </p>
           </div>
           <div className="hidden rounded-xl border border-slate-200 bg-white p-1 md:flex">
-            {(["My day", "All jobs", "Earnings"] as const).map((item) => (
+            {(["My day", "All jobs", "Earnings", "Archived"] as const).map((item) => (
               <button
                 key={item}
                 onClick={() => setView(item)}
@@ -1074,7 +1117,7 @@ function CleanerWorkspace({
               </p>
             </div>
             <CleanerJobGrid
-              jobs={jobs}
+              jobs={jobs.filter((job) => !job.archived)}
               pending={pending}
               onOpen={setSelected}
               onAction={primaryAction}
@@ -1104,11 +1147,62 @@ function CleanerWorkspace({
         )}
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-slate-200 bg-white/95 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
+      {view === "Archived" && (
+  <section className="mx-auto mt-8 w-full max-w-6xl px-4 sm:px-6 lg:px-8">
+    <h2 className="text-xl font-semibold">
+      Archived jobs
+    </h2>
+
+    <p className="mt-1 text-sm text-slate-500">
+      Completed jobs you have archived.
+    </p>
+
+    {archivedJobs.length === 0 ? (
+      <p className="mt-6 text-sm text-slate-500">
+        No archived jobs yet.
+      </p>
+    ) : (
+      <div className="mt-5 space-y-3">
+        {archivedJobs.map((job) => (
+  <div
+    key={job.id}
+    className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between"
+  >
+    <button
+      type="button"
+      onClick={() => setSelected(job)}
+      className="min-w-0 flex-1 text-left"
+    >
+      <p className="font-semibold">{job.title}</p>
+      <p className="mt-1 text-sm text-slate-500">
+        {job.serviceAddress}
+      </p>
+      <p className="mt-1 text-xs text-slate-400">
+        {new Date(job.scheduledAt).toLocaleDateString("en-AU")}
+      </p>
+    </button>
+
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => restoreJob(job.id)}
+      className="rounded-xl border border-teal-600 px-4 py-2 text-sm font-semibold text-teal-700 hover:bg-teal-50 disabled:opacity-50"
+    >
+      Restore job
+    </button>
+  </div>
+))}
+      </div>
+    )}
+  </section>
+)}
+
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white/95 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
         {([
           ["My day", "grid"],
-          ["All jobs", "briefcase"],
-          ["Earnings", "money"],
+["All jobs", "briefcase"],
+["Earnings", "money"],
+["Archived", "clock"],
         ] as [typeof view, IconName][]).map(([item, icon]) => (
           <button
             key={item}
@@ -2024,6 +2118,31 @@ postcode: String(form.get("postcode") ?? ""),
           </div>
         </div>
         <div className="sticky bottom-0 border-t border-slate-100 bg-white p-6">
+
+              {!isManager && job.status === "completed" && !job.archived && (
+  <button
+    type="button"
+    disabled={pending}
+    onClick={() => {
+      if (!window.confirm("Archive this completed job?")) return
+
+      void (async () => {
+        const result = await toggleJobArchiveAction(job.id, true)
+
+        if (!result.ok) {
+          alert(result.error)
+          return
+        }
+
+        window.location.reload()
+      })()
+    }}
+    className="w-full rounded-xl bg-slate-900 py-3.5 font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+  >
+    Archive Job
+  </button>
+)}
+
           {!isManager && job.status === "scheduled" && (
             <button
               disabled={pending}

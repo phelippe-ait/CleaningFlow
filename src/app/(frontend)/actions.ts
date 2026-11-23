@@ -259,3 +259,52 @@ export async function updateChecklistAction(
 
   return { ok: true }
 }
+export async function toggleJobArchiveAction(
+  jobId: string,
+  archived: boolean
+): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "cleaner") {
+    return { ok: false, error: "Cleaner access required." }
+  }
+
+  const supabase = await createSupabaseServerClient()
+
+
+  const { data: sessionData } = await supabase.auth.getSession()
+
+console.log("Archive session:", {
+  role: sessionData.session?.user.role,
+  hasAccessToken: Boolean(sessionData.session?.access_token),
+})
+
+
+  const {
+  data: { user: supabaseUser },
+  error: authError,
+} = await supabase.auth.getUser()
+
+console.log("CleanFlow archive auth:", {
+  appUserId: user.id,
+  supabaseUserId: supabaseUser?.id ?? null,
+  authError: authError?.message ?? null,
+})
+
+  const { error } = archived
+    ? await supabase
+        .from("archived_jobs")
+.insert({
+  cleaner_id: user.id,
+  job_id: jobId,
+})
+    : await supabase
+        .from("archived_jobs")
+        .delete()
+        .eq("cleaner_id", user.id)
+        .eq("job_id", jobId)
+
+  return error
+    ? { ok: false, error: error.message }
+    : { ok: true }
+}
