@@ -320,6 +320,17 @@ export function Dashboard({
   const [notice, setNotice] = useState("")
   const [pending, startTransition] = useTransition()
   const [scheduleView, setScheduleView] = useState<"list" | "calendar">("list")
+  const [earningsPeriod, setEarningsPeriod] = useState<
+  "all" | "week" | "month" | "custom"
+>("all")
+
+const [earningsCleaner, setEarningsCleaner] = useState("all")
+
+const [earningsFrom, setEarningsFrom] = useState("")
+const [earningsTo, setEarningsTo] = useState("")
+  const [scheduleFilter, setScheduleFilter] = useState<
+  "all" | "active" | "completed"
+>("all")
   const manager = user.role === "manager"
 
   const filtered = useMemo(
@@ -332,6 +343,19 @@ export function Dashboard({
       ),
     [jobs, query],
   )
+
+  const scheduleJobs = filtered.filter((job) => {
+  if (scheduleFilter === "completed") {
+    return job.status === "completed"
+  }
+
+  if (scheduleFilter === "active") {
+    return job.status !== "completed"
+  }
+
+  return true
+})
+
   const upcoming = filtered.filter((job) => job.status !== "completed")
   const completed = jobs.filter(
   (job) =>
@@ -350,6 +374,85 @@ const archived = jobs.filter(
       sum + (job.status === "completed" ? job.estimatedEarnings : 0),
     0,
   )
+
+  const now = new Date()
+
+const weekStart = new Date(now)
+weekStart.setHours(0, 0, 0, 0)
+weekStart.setDate(
+  now.getDate() - ((now.getDay() + 6) % 7)
+)
+
+const weekEnd = new Date(weekStart)
+weekEnd.setDate(weekStart.getDate() + 7)
+
+const monthStart = new Date(
+  now.getFullYear(),
+  now.getMonth(),
+  1
+)
+
+const monthEnd = new Date(
+  now.getFullYear(),
+  now.getMonth() + 1,
+  1
+)
+
+const weeklyEarnings = completed
+  .filter((job) => {
+    const date = new Date(job.actualEnd ?? job.scheduledAt)
+    return date >= weekStart && date < weekEnd
+  })
+  .reduce((sum, job) => sum + job.estimatedEarnings, 0)
+
+const monthlyEarnings = completed
+  .filter((job) => {
+    const date = new Date(job.actualEnd ?? job.scheduledAt)
+    return date >= monthStart && date < monthEnd
+  })
+  .reduce((sum, job) => sum + job.estimatedEarnings, 0)
+
+const filteredEarningsJobs = completed.filter((job) => {
+  const date = new Date(job.actualEnd ?? job.scheduledAt)
+
+  if (earningsCleaner !== "all") {
+    if (
+      typeof job.cleaner === "string" ||
+      job.cleaner.id !== earningsCleaner
+    ) {
+      return false
+    }
+  }
+
+  if (earningsPeriod === "week") {
+    return date >= weekStart && date < weekEnd
+  }
+
+  if (earningsPeriod === "month") {
+    return date >= monthStart && date < monthEnd
+  }
+
+  if (earningsPeriod === "custom") {
+    const from = earningsFrom
+      ? new Date(`${earningsFrom}T00:00:00`)
+      : null
+
+    const to = earningsTo
+      ? new Date(`${earningsTo}T23:59:59.999`)
+      : null
+
+    if (from && date < from) return false
+    if (to && date > to) return false
+  }
+
+  return true
+})
+
+const filteredEarnings = filteredEarningsJobs.reduce(
+  (sum, job) => sum + job.estimatedEarnings,
+  0
+)
+
 
   function changeStatus(job: Job, status: Job["status"]) {
     startTransition(async () => {
@@ -418,15 +521,16 @@ const archived = jobs.filter(
   }
 
   const nav = [
-    ["Overview", "grid"],
-    ["Schedule", "calendar"],
-    ...(manager
-      ? [
-          ["Clients", "users"],
-          ["Cleaners", "team"],
-        ]
-      : []),
-  ] as [string, IconName][]
+  ["Overview", "grid"],
+  ["Schedule", "calendar"],
+  ...(manager
+    ? [
+        ["Earnings", "money"],
+        ["Clients", "users"],
+        ["Cleaners", "team"],
+      ]
+    : []),
+] as [string, IconName][]
 
   if (!manager) {
     return (
@@ -602,51 +706,83 @@ const archived = jobs.filter(
           {tab === "Overview" && (
             <>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Metric
-                  icon="briefcase"
-                  label={manager ? "Active jobs" : "Upcoming jobs"}
-                  value={upcoming.length}
-                  detail={
-                    upcoming.length
-                      ? `${upcoming.filter((j) => j.status === "in-progress").length} in progress`
-                      : "Ready for new work"
-                  }
-                  accent="teal"
-                />
-                <Metric
-                  icon="check"
-                  label="Completed"
-                  value={completed.length}
-                  detail="All-time jobs"
-                  accent="blue"
-                />
-                <Metric
-                  icon="money"
-                  label="Earnings"
-                  value={money(earnings)}
-                  detail={
-                    manager ? "Completed job value" : "Your completed jobs"
-                  }
-                  accent="amber"
-                />
-                <Metric
-                  icon={manager ? "users" : "clock"}
-                  label={manager ? "Clients & properties" : "Scheduled hours"}
-                  value={
-                    manager
-                      ? clientCount + propertyCount
-                      : Math.round(
-                          jobs.reduce((s, j) => s + j.durationMinutes, 0) / 60,
-                        )
-                  }
-                  detail={
-                    manager
-                      ? `${clientCount} clients · ${propertyCount} properties`
-                      : "Across assigned jobs"
-                  }
-                  accent="violet"
-                />
+              <button
+  type="button"
+  className="w-full rounded-2xl text-left transition hover:ring-2 hover:ring-teal-300"
+  onClick={() => {
+    setTab("Schedule")
+    setScheduleView("list")
+    setScheduleFilter("active")
+  }}
+>
+  <Metric
+    icon="briefcase"
+    label={manager ? "Active jobs" : "Upcoming jobs"}
+    value={upcoming.length}
+    detail={
+      upcoming.length
+        ? `${upcoming.filter((j) => j.status === "in-progress").length} in progress`
+        : "Ready for new work"
+    }
+    accent="teal"
+  />
+</button>
+                <button
+  type="button"
+  onClick={() => {
+    setScheduleFilter("completed")
+    setScheduleView("list")
+    setTab("Schedule")
+  }}
+  className="w-full rounded-2xl text-left transition hover:ring-2 hover:ring-teal-300"
+>
+  <Metric
+    icon="check"
+    label="Completed"
+    value={completed.length}
+    detail="View completed jobs"
+    accent="blue"
+  />
+</button>
+                <button
+  type="button"
+  onClick={() => setTab("Earnings")}
+  className="w-full rounded-2xl text-left transition hover:ring-2 hover:ring-teal-300"
+>
+  <Metric
+    icon="money"
+    label="Earnings"
+    value={money(earnings)}
+    detail="View earnings history"
+    accent="amber"
+  />
+</button>
+                <button
+  type="button"
+  onClick={() => setTab("Clients")}
+  className="w-full rounded-2xl text-left transition hover:ring-2 hover:ring-teal-300"
+>
+  <Metric
+    icon={manager ? "users" : "clock"}
+    label={manager ? "Clients & properties" : "Scheduled hours"}
+    value={
+      manager
+        ? clientCount + propertyCount
+        : Math.round(
+            jobs.reduce((s, j) => s + j.durationMinutes, 0) / 60,
+          )
+    }
+    detail={
+      manager
+        ? `${clientCount} clients · ${propertyCount} properties`
+        : "Across assigned jobs"
+    }
+    accent="violet"
+  />
+</button>
               </div>
+
+              
               <div className="mt-7 grid gap-7 xl:grid-cols-[1.5fr_.7fr]">
                 <JobList
                   title="Next up"
@@ -715,19 +851,209 @@ const archived = jobs.filter(
           )}
 
           {tab === "Schedule" && (
-  scheduleView === "list" ? (
+  <div className="space-y-5">
+    <div className="flex flex-wrap gap-2">
+      {(["all", "active", "completed"] as const).map((filter) => (
+        <button
+          key={filter}
+          type="button"
+          onClick={() => setScheduleFilter(filter)}
+          className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            scheduleFilter === filter
+              ? "bg-teal-600 text-white"
+              : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          {filter === "all"
+            ? "All jobs"
+            : filter === "active"
+              ? "Active jobs"
+              : "Completed jobs"}
+        </button>
+      ))}
+    </div>
+
+    {scheduleView === "list" ? (
+      <JobList
+        title={`${scheduleJobs.length} jobs`}
+        jobs={scheduleJobs}
+        onSelect={setSelected}
+      />
+    ) : (
+      <JobCalendar
+        jobs={scheduleJobs}
+        onSelect={setSelected}
+      />
+    )}
+  </div>
+)}
+
+  {tab === "Earnings" && manager && (
+  <div className="space-y-6">
+
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <Metric
+        icon="money"
+        label="Total earnings"
+        value={money(earnings)}
+        detail="All-time completed job value"
+        accent="teal"
+      />
+
+      <Metric
+        icon="check"
+        label="Completed jobs"
+        value={completed.length}
+        detail="Successfully completed services"
+        accent="blue"
+      />
+
+      <Metric
+        icon="calendar"
+        label="This week"
+        value={money(weeklyEarnings)}
+        detail="Monday – Sunday"
+        accent="amber"
+      />
+
+      <Metric
+        icon="money"
+        label="This month"
+        value={money(monthlyEarnings)}
+        detail="Current calendar month"
+        accent="violet"
+      />
+    </div>
+
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-5 flex items-center justify-between">
+        <h2 className="text-lg font-semibold">
+          Filter earnings
+        </h2>
+
+        <button
+          type="button"
+          onClick={() => {
+            setEarningsPeriod("all")
+            setEarningsCleaner("all")
+            setEarningsFrom("")
+            setEarningsTo("")
+          }}
+          className="text-sm font-semibold text-teal-600 hover:text-teal-800"
+        >
+          Reset filters
+        </button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-600">
+            Period
+          </label>
+
+          <select
+            value={earningsPeriod}
+            onChange={(event) =>
+              setEarningsPeriod(
+                event.target.value as
+                  | "all"
+                  | "week"
+                  | "month"
+                  | "custom"
+              )
+            }
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+          >
+            <option value="all">All time</option>
+            <option value="week">This week</option>
+            <option value="month">This month</option>
+            <option value="custom">Custom dates</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-600">
+            Cleaner
+          </label>
+
+          <select
+            value={earningsCleaner}
+            onChange={(event) =>
+              setEarningsCleaner(event.target.value)
+            }
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+          >
+            <option value="all">All cleaners</option>
+
+            {cleaners.map((cleaner) => (
+              <option key={cleaner.id} value={cleaner.id}>
+                {cleaner.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {earningsPeriod === "custom" && (
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-600">
+              From
+            </label>
+
+            <input
+              type="date"
+              value={earningsFrom}
+              max={earningsTo || undefined}
+              onChange={(event) =>
+                setEarningsFrom(event.target.value)
+              }
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-600">
+              To
+            </label>
+
+            <input
+              type="date"
+              value={earningsTo}
+              min={earningsFrom || undefined}
+              onChange={(event) =>
+                setEarningsTo(event.target.value)
+              }
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 rounded-xl bg-teal-50 p-5">
+        <p className="text-sm font-medium text-teal-700">
+          Filtered earnings
+        </p>
+
+        <p className="mt-1 text-3xl font-bold text-teal-900">
+          {money(filteredEarnings)}
+        </p>
+
+        <p className="mt-2 text-sm text-teal-700">
+          {filteredEarningsJobs.length} completed jobs
+        </p>
+      </div>
+    </div>
+
     <JobList
-      title={`${filtered.length} scheduled jobs`}
-      jobs={filtered}
+      title="Earnings history"
+      jobs={filteredEarningsJobs}
       onSelect={setSelected}
     />
-  ) : (
-    <JobCalendar
-  jobs={filtered}
-  onSelect={setSelected}
-/>
-  )
+
+  </div>
 )}
+
           {tab === "Clients" && (
             <EmptyPanel
               icon="users"
