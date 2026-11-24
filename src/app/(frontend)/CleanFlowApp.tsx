@@ -5,6 +5,7 @@ import {
   useState,
   useTransition,
   useEffect,
+  useRef,
   type FormEvent,
   type ReactNode,
 } from "react"
@@ -367,6 +368,33 @@ export function Dashboard({
   const [tab, setTab] = useState("Overview")
   const [query, setQuery] = useState("")
 
+  const searchRef = useRef<HTMLDivElement>(null)
+
+useEffect(() => {
+  function handleClickOutside(event: MouseEvent) {
+    if (
+      searchRef.current &&
+      !searchRef.current.contains(event.target as Node)
+    ) {
+      setQuery("")
+    }
+  }
+
+  function handleEscape(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      setQuery("")
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside)
+  document.addEventListener("keydown", handleEscape)
+
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside)
+    document.removeEventListener("keydown", handleEscape)
+  }
+}, [])
+
   const [editingCleaner, setEditingCleaner] =
   useState<Cleaner | null>(null)
 
@@ -539,6 +567,59 @@ const filteredCleaners = cleaners.filter((cleaner) => {
       ),
     [jobs, query],
   )
+
+  const globalSearch = query.trim().toLowerCase()
+
+const globalJobResults = globalSearch
+  ? jobs.filter((job) =>
+      `${job.title} ${job.clientName} ${job.serviceAddress}`
+        .toLowerCase()
+        .includes(globalSearch)
+    ).slice(0, 5)
+  : []
+
+const globalClientResults = globalSearch
+  ? clients.filter((client) =>
+      [client.full_name, client.email, client.phone]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(globalSearch)
+    ).slice(0, 5)
+  : []
+
+const globalPropertyResults = globalSearch
+  ? clients.flatMap((client) =>
+      client.properties.map((property) => ({
+        ...property,
+        clientId: client.id,
+        clientName: client.full_name,
+      }))
+    ).filter((property) =>
+      [
+        property.property_name,
+        property.address_line1,
+        property.address_line2,
+        property.suburb,
+        property.state,
+        property.postcode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(globalSearch)
+    ).slice(0, 5)
+  : []
+
+const globalCleanerResults = globalSearch
+  ? cleaners.filter((cleaner) =>
+      [cleaner.name, cleaner.email, cleaner.phone]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(globalSearch)
+    ).slice(0, 5)
+  : []
 
   const scheduleJobs = filtered.filter((job) => {
   if (scheduleFilter === "completed") {
@@ -807,18 +888,204 @@ const filteredEarnings = filteredEarningsJobs.reduce(
           <button className="lg:hidden" onClick={() => setMobileNav(true)}>
             <Icon name="menu" />
           </button>
-          <div className="relative ml-4 hidden max-w-md flex-1 md:block lg:ml-0">
-            <Icon
-              name="search"
-              className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search jobs, clients or addresses"
-              className="w-full rounded-xl bg-slate-100 py-2.5 pl-11 pr-4 text-sm outline-none ring-teal-500/20 focus:ring-4"
-            />
-          </div>
+          <div
+  ref={searchRef}
+  className="mx-3 min-w-0 max-w-lg flex-1 md:relative lg:ml-0 lg:mr-6"
+>
+<div className="relative">
+
+  <Icon
+    name="search"
+    className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-600"
+  />
+
+  <input
+    value={query}
+    onChange={(event) => setQuery(event.target.value)}
+    placeholder="Search anything..."
+    aria-label="Global search"
+    className="w-full rounded-xl border-2 border-slate-300 bg-white py-3 pl-12 pr-12 text-sm font-medium text-slate-900 placeholder:text-slate-500 outline-none transition hover:border-slate-400 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10"
+  />
+
+  {query && (
+    <button
+      type="button"
+      onClick={() => setQuery("")}
+      aria-label="Clear search"
+      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+    >
+      <Icon name="close" className="size-4" />
+    </button>
+  )}
+
+</div>
+  {globalSearch && (
+  <div className="absolute left-5 right-5 top-full z-50 mt-2 max-h-[60vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl md:left-0 md:right-0">
+
+    {/* Jobs */}
+    {globalJobResults.length > 0 && (
+      <div className="p-2">
+        <p className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+          Jobs
+        </p>
+
+        {globalJobResults.map((job) => (
+          <button
+            key={job.id}
+            type="button"
+            onClick={() => {
+              setQuery("")
+              setTab("Schedule")
+              setSelected(job)
+            }}
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-teal-50"
+          >
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <Icon name="briefcase" className="size-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {job.title}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {job.clientName} · {job.serviceAddress}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    {/* Clients */}
+    {globalClientResults.length > 0 && (
+      <div className="border-t border-slate-100 p-2">
+        <p className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+          Clients
+        </p>
+
+        {globalClientResults.map((client) => (
+          <button
+            key={client.id}
+            type="button"
+            onClick={() => {
+              setQuery("")
+              setTab("Clients")
+              setSelectedClientId(client.id)
+              setExpandedPropertyId(null)
+            }}
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-teal-50"
+          >
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <Icon name="users" className="size-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {client.full_name}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {client.email || client.phone || "Client profile"}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    {/* Properties */}
+    {globalPropertyResults.length > 0 && (
+      <div className="border-t border-slate-100 p-2">
+        <p className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+          Properties
+        </p>
+
+        {globalPropertyResults.map((property) => (
+          <button
+            key={property.id}
+            type="button"
+            onClick={() => {
+              setQuery("")
+              setTab("Clients")
+              setSelectedClientId(property.clientId)
+              setExpandedPropertyId(property.id)
+            }}
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-teal-50"
+          >
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <Icon name="pin" className="size-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {property.property_name || property.address_line1}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {property.clientName} · {property.suburb} {property.postcode}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    {/* Cleaners */}
+    {globalCleanerResults.length > 0 && (
+      <div className="border-t border-slate-100 p-2">
+        <p className="mb-2 px-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+          Cleaners
+        </p>
+
+        {globalCleanerResults.map((cleaner) => (
+          <button
+            key={cleaner.id}
+            type="button"
+            onClick={() => {
+              setQuery("")
+              setTab("Cleaners")
+              setSelectedCleanerId(cleaner.id)
+            }}
+            className="flex w-full items-center gap-3 rounded-xl p-3 text-left transition hover:bg-teal-50"
+          >
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <Icon name="team" className="size-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {cleaner.name}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {cleaner.email || "Cleaner profile"}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    )}
+
+    {/* No results */}
+    {globalJobResults.length === 0 &&
+      globalClientResults.length === 0 &&
+      globalPropertyResults.length === 0 &&
+      globalCleanerResults.length === 0 && (
+        <div className="p-6 text-center">
+          <Icon
+            name="search"
+            className="mx-auto mb-3 size-6 text-slate-400"
+          />
+          <p className="text-sm font-semibold text-slate-700">
+            No results found
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Try a different name, address or job title.
+          </p>
+        </div>
+      )}
+  </div>
+)}
+
+</div>
           <div className="ml-auto flex items-center gap-3">
             <button className="relative grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500">
               <Icon name="bell" className="size-5" />
