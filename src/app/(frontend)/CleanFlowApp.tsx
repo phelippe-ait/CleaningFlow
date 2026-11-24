@@ -11,6 +11,7 @@ import {
 import { useRouter } from "next/navigation"
 import {
   createCleanerAction,
+  updateCleanerAction,
   createJobAction,
   createClientAction,
   updateClientAction,
@@ -31,6 +32,10 @@ type Cleaner = {
   id: string
   name: string
   email: string
+  phone?: string | null
+  isActive?: boolean
+  createdAt?: string
+  notes?: string | null
 }
 type Job = {
   id: string
@@ -207,18 +212,33 @@ function Icon({
   )
 }
 
-function Logo({ compact = false }: { compact?: boolean }) {
+function Logo({
+  compact = false,
+  onClick,
+}: {
+  compact?: boolean
+  onClick?: () => void
+}) {
   return (
-    <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={() => {
+        onClick?.()
+        window.scrollTo({ top: 0, behavior: "smooth" })
+      }}
+      aria-label="CleaningFlow - Home"
+      className="flex cursor-pointer items-center gap-3 text-left transition hover:opacity-80"
+    >
       <span className="grid size-10 place-items-center rounded-2xl bg-teal-500 text-white shadow-lg shadow-teal-900/10">
         <Icon name="sparkle" className="size-6" />
       </span>
+
       {!compact && (
         <span className="text-xl font-bold tracking-tight text-slate-900">
-          CleanFlow
+          CleaningFlow
         </span>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -346,6 +366,21 @@ export function Dashboard({
   const router = useRouter()
   const [tab, setTab] = useState("Overview")
   const [query, setQuery] = useState("")
+
+  const [editingCleaner, setEditingCleaner] =
+  useState<Cleaner | null>(null)
+
+const [editCleanerError, setEditCleanerError] =
+  useState("")
+  const [cleanerSearch, setCleanerSearch] = useState("")
+
+const [cleanerFilter, setCleanerFilter] = useState<
+  "all" | "active" | "inactive"
+>("all")
+
+const [selectedCleanerId, setSelectedCleanerId] = useState<
+  string | null
+>(null)
   const [clientSearch, setClientSearch] = useState("")
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
 
@@ -401,6 +436,71 @@ const [earningsTo, setEarningsTo] = useState("")
 const selectedClient = clients.find(
   (client) => client.id === selectedClientId
 ) ?? null
+
+const selectedCleaner = cleaners.find(
+  (cleaner) => cleaner.id === selectedCleanerId
+) ?? null
+
+const selectedCleanerJobs = jobs.filter(
+  (job) =>
+    typeof job.cleaner !== "string" &&
+    job.cleaner.id === selectedCleanerId
+)
+
+const selectedCleanerCompletedJobs =
+  selectedCleanerJobs.filter(
+    (job) => job.status === "completed"
+  )
+
+const selectedCleanerWorkedMinutes =
+  selectedCleanerCompletedJobs.reduce((total, job) => {
+    if (!job.actualStart || !job.actualEnd) {
+      return total
+    }
+
+    const start = new Date(job.actualStart).getTime()
+    const end = new Date(job.actualEnd).getTime()
+
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      return total
+    }
+
+    return total + Math.max(0, (end - start) / 60000)
+  }, 0)
+
+const selectedCleanerHours = Math.floor(
+  selectedCleanerWorkedMinutes / 60
+)
+
+const selectedCleanerMinutes = Math.floor(
+  selectedCleanerWorkedMinutes % 60
+)
+
+const selectedCleanerEarnings =
+  selectedCleanerCompletedJobs.reduce(
+    (total, job) => total + job.estimatedEarnings,
+    0
+  )
+
+const activeCleanerCount = cleaners.filter(
+  (cleaner) => cleaner.isActive === true
+).length
+
+const filteredCleaners = cleaners.filter((cleaner) => {
+  const search = cleanerSearch.trim().toLowerCase()
+
+  const matchesSearch =
+    cleaner.name.toLowerCase().includes(search) ||
+    cleaner.email.toLowerCase().includes(search) ||
+    (cleaner.phone ?? "").toLowerCase().includes(search)
+
+  const matchesStatus =
+    cleanerFilter === "all" ||
+    (cleanerFilter === "active" && cleaner.isActive === true) ||
+    (cleanerFilter === "inactive" && cleaner.isActive === false)
+
+  return matchesSearch && matchesStatus
+})
   const filteredClients = clients.filter((client) => {
   const search = clientSearch.trim().toLowerCase()
 
@@ -654,7 +754,12 @@ const filteredEarnings = filteredEarningsJobs.reduce(
         }`}
       >
         <div className="flex items-center justify-between">
-          <Logo />
+         <Logo
+  onClick={() => {
+    setTab("Overview")
+    setMobileNav(false)
+  }}
+/>
           <button className="lg:hidden" onClick={() => setMobileNav(false)}>
             <Icon name="close" />
           </button>
@@ -2230,65 +2335,705 @@ router.refresh()
   </div>
 )}
           {tab === "Cleaners" && (
-            <div>
-              <div className="mb-5 flex items-center justify-between">
-                <p className="text-sm text-slate-500">
-                  {cleaners.length} active{" "}
-                  {cleaners.length === 1 ? "cleaner" : "cleaners"}
-                </p>
-                <button
-                  onClick={() => {
-                    setCleanerError("")
-                    setNewCleaner(true)
-                  }}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:border-teal-300 hover:text-teal-700"
-                >
-                  <Icon name="plus" className="size-4" />
-                  Add cleaner
-                </button>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {cleaners.length ? (
-                  cleaners.map((cleaner) => (
-                    <div
-                      key={cleaner.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-6"
-                    >
-                      <span className="grid size-12 place-items-center rounded-2xl bg-teal-50 font-bold text-teal-700">
-                        {cleaner.name.charAt(0)}
+  <div className="space-y-6">
+
+    {/* Cleaner statistics */}
+    <div className="grid gap-4 sm:grid-cols-3">
+      {[
+        {
+          label: "Total cleaners",
+          value: cleaners.length,
+        },
+        {
+          label: "Active cleaners",
+          value: activeCleanerCount,
+        },
+        {
+          label: "Inactive cleaners",
+          value: cleaners.length - activeCleanerCount,
+        },
+      ].map((metric) => (
+        <div
+          key={metric.label}
+          className="rounded-2xl border border-slate-200 bg-white p-6"
+        >
+          <div className="grid size-11 place-items-center rounded-xl bg-teal-50 text-teal-700">
+            <Icon name="team" className="size-5" />
+          </div>
+
+          <p className="mt-4 text-sm font-medium text-slate-500">
+            {metric.label}
+          </p>
+
+          <p className="mt-2 text-3xl font-bold text-slate-900">
+            {metric.value}
+          </p>
+        </div>
+      ))}
+    </div>
+
+    {/* Cleaner directory */}
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 p-6">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Cleaner directory
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Manage your cleaning team and their information.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCleanerError("")
+            setNewCleaner(true)
+          }}
+          className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-700"
+        >
+          <Icon name="plus" className="size-4" />
+          Add cleaner
+        </button>
+      </div>
+
+      {/* Search and filters */}
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-6 sm:flex-row">
+
+        <div className="relative flex-1">
+          <Icon
+            name="search"
+            className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+          />
+
+          <input
+            type="search"
+            value={cleanerSearch}
+            onChange={(event) =>
+              setCleanerSearch(event.target.value)
+            }
+            placeholder="Search by name, email or phone..."
+            className="w-full rounded-xl border border-slate-200 py-3 pl-10 pr-4 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+        <select
+          value={cleanerFilter}
+          onChange={(event) =>
+            setCleanerFilter(
+              event.target.value as "all" | "active" | "inactive"
+            )
+          }
+          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-teal-500"
+        >
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+
+      </div>
+
+      <div className="px-6 py-3 text-xs text-slate-500">
+        Showing {filteredCleaners.length} of {cleaners.length} cleaners
+      </div>
+
+      {/* Cleaner table */}
+      {filteredCleaners.length === 0 ? (
+        <div className="p-12 text-center text-sm text-slate-500">
+          No cleaners match your search.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+
+            <thead className="border-y border-slate-200 bg-slate-50">
+              <tr>
+                <th className="px-6 py-4 font-semibold text-slate-500">
+                  Cleaner
+                </th>
+
+                <th className="px-6 py-4 font-semibold text-slate-500">
+                  Phone
+                </th>
+
+                <th className="px-6 py-4 text-center font-semibold text-slate-500">
+                  Loaded jobs
+                </th>
+
+                <th className="px-6 py-4 font-semibold text-slate-500">
+                  Status
+                </th>
+
+                <th className="px-6 py-4 text-right font-semibold text-slate-500">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+
+              {filteredCleaners.map((cleaner) => {
+                const assignedJobs = jobs.filter(
+                  (job) =>
+                    typeof job.cleaner !== "string" &&
+                    job.cleaner.id === cleaner.id
+                ).length
+
+                return (
+                  <tr
+                    key={cleaner.id}
+                    className="transition hover:bg-slate-50"
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+
+                        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 font-bold text-teal-700">
+                          {cleaner.name.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div>
+                          <p className="font-semibold text-slate-900">
+                            {cleaner.name}
+                          </p>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            {cleaner.email || "No email available"}
+                          </p>
+                        </div>
+
+                      </div>
+                    </td>
+
+                    <td className="whitespace-nowrap px-6 py-4 text-slate-600">
+                      {cleaner.phone || "—"}
+                    </td>
+
+                    <td className="px-6 py-4 text-center">
+                      <span className="rounded-lg bg-slate-100 px-3 py-1 font-semibold text-slate-600">
+                        {assignedJobs}
                       </span>
-                      <p className="mt-4 font-semibold">{cleaner.name}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {cleaner.email}
-                      </p>
-                      <p className="mt-5 text-xs font-semibold uppercase tracking-wider text-teal-600">
-                        {
-                          jobs.filter(
-                            (j) =>
-                              typeof j.cleaner !== "string" &&
-                              j.cleaner.id === cleaner.id,
-                          ).length
-                        }{" "}
-                        assigned jobs
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyPanel
-                    icon="team"
-                    title="Build your cleaning team"
-                    text="Add your first cleaner with their sign-in email and a temporary password."
-                  />
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          cleaner.isActive
+                            ? "bg-teal-50 text-teal-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {cleaner.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedCleanerId(cleaner.id)
+                        }
+                        className="whitespace-nowrap rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-700"
+                      >
+                        View details
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+        </section>
+      </div>
+{selectedCleaner && manager && tab === "Cleaners" && (
+  <div className="fixed inset-0 z-40 flex justify-end">
+
+    {/* Background overlay */}
+    <button
+      type="button"
+      aria-label="Close cleaner details"
+      onClick={() => setSelectedCleanerId(null)}
+      className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+    />
+
+    {/* Cleaner drawer */}
+    <aside className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
+
+      {/* Header */}
+      <div className="flex items-center gap-4 border-b border-slate-200 p-6">
+
+        <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-teal-50 text-xl font-bold text-teal-700">
+          {selectedCleaner.name.charAt(0).toUpperCase()}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-bold text-slate-900">
+            {selectedCleaner.name}
+          </h2>
+
+          <span
+            className={`mt-1 inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+              selectedCleaner.isActive
+                ? "bg-teal-50 text-teal-700"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {selectedCleaner.isActive
+              ? "Active cleaner"
+              : "Inactive cleaner"}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setSelectedCleanerId(null)}
+          className="rounded-xl bg-slate-100 p-2.5 text-slate-500 hover:bg-slate-200"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+
+      </div>
+
+      {/* Drawer content */}
+      <div className="flex-1 space-y-6 overflow-y-auto p-6">
+
+        {/* Contact information */}
+        <div>
+          <h3 className="mb-4 text-sm font-bold text-slate-900">
+            Contact information
+          </h3>
+
+          <div className="space-y-4 rounded-xl border border-slate-200 p-4">
+
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Full name
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {selectedCleaner.name}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Email address
+              </p>
+              <p className="mt-1 break-all text-sm text-slate-700">
+                {selectedCleaner.email || "Not registered"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Phone number
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                {selectedCleaner.phone || "Not registered"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Member since
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                {selectedCleaner.createdAt
+                  ? new Date(
+                      selectedCleaner.createdAt
+                    ).toLocaleDateString("en-AU", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                      timeZone: "Australia/Sydney",
+                    })
+                  : "Not available"}
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+                    {/* Performance overview */}
+<div>
+  <h3 className="mb-4 text-sm font-bold text-slate-900">
+    Performance overview
+  </h3>
+
+  <div className="grid grid-cols-2 gap-3">
+    {[
+      {
+        label: "Loaded jobs",
+        value: selectedCleanerJobs.length,
+        icon: "briefcase" as const,
+      },
+      {
+        label: "Completed jobs",
+        value: selectedCleanerCompletedJobs.length,
+        icon: "check" as const,
+      },
+      {
+        label: "Hours worked",
+        value: `${selectedCleanerHours}h ${selectedCleanerMinutes}m`,
+        icon: "clock" as const,
+      },
+      {
+        label: "Estimated earnings",
+        value: selectedCleanerEarnings.toLocaleString("en-AU", {
+          style: "currency",
+          currency: "AUD",
+        }),
+        icon: "money" as const,
+      },
+    ].map((metric) => (
+      <div
+        key={metric.label}
+        className="rounded-xl border border-slate-200 bg-white p-4"
+      >
+        <div className="grid size-9 place-items-center rounded-lg bg-teal-50 text-teal-700">
+          <Icon name={metric.icon} className="size-5" />
+        </div>
+
+        <p className="mt-3 text-xs font-medium text-slate-500">
+          {metric.label}
+        </p>
+
+        <p className="mt-1 text-xl font-bold text-slate-900">
+          {metric.value}
+        </p>
+      </div>
+    ))}
+  </div>
+
+  <p className="mt-3 text-xs text-slate-400">
+    Based on loaded jobs. Working hours and estimated
+    earnings are calculated from completed jobs.
+  </p>
+</div>
+
+{/* Job history */}
+<div>
+  <div className="mb-4 flex items-center justify-between">
+    <h3 className="text-sm font-bold text-slate-900">
+      Job history
+    </h3>
+
+    <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+      {selectedCleanerJobs.length} jobs
+    </span>
+  </div>
+
+  {selectedCleanerJobs.length === 0 ? (
+    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+      No jobs assigned to this cleaner.
+    </div>
+  ) : (
+    <div className="max-h-96 space-y-3 overflow-y-auto">
+
+      {[...selectedCleanerJobs]
+        .sort(
+          (a, b) =>
+            new Date(b.scheduledAt).getTime() -
+            new Date(a.scheduledAt).getTime()
+        )
+        .map((job) => (
+          <div
+            key={job.id}
+            className="rounded-xl border border-slate-200 p-4 transition hover:border-teal-300"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900">
+                  {job.title}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  {job.clientName}
+                </p>
+              </div>
+
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  job.status === "completed"
+                    ? "bg-teal-50 text-teal-700"
+                    : job.status === "in-progress"
+                    ? "bg-amber-50 text-amber-700"
+                    : job.status === "accepted"
+                    ? "bg-blue-50 text-blue-700"
+                    : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {job.status === "completed"
+                  ? "Completed"
+                  : job.status === "in-progress"
+                  ? "In progress"
+                  : job.status === "accepted"
+                  ? "Accepted"
+                  : "Scheduled"}
+              </span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Icon name="pin" className="size-4" />
+                {job.serviceAddress}
+                {job.suburb ? `, ${job.suburb}` : ""}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Icon name="calendar" className="size-4" />
+
+                {new Date(job.scheduledAt).toLocaleDateString(
+                  "en-AU",
+                  {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    timeZone: "Australia/Sydney",
+                  }
                 )}
               </div>
             </div>
-          )}
-        </section>
+
+            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+              <span className="text-xs text-slate-500">
+                Estimated earnings
+              </span>
+
+              <span className="text-sm font-bold text-teal-700">
+                {job.estimatedEarnings.toLocaleString("en-AU", {
+                  style: "currency",
+                  currency: "AUD",
+                })}
+              </span>
+            </div>
+          </div>
+        ))}
+
+    </div>
+  )}
+
+  <p className="mt-2 text-xs text-slate-400">
+    Showing currently loaded jobs, most recent first.
+  </p>
+</div>
+
+        {/* Internal notes */}
+        <div>
+          <h3 className="mb-3 text-sm font-bold text-slate-900">
+            Internal notes
+          </h3>
+
+          <div className="rounded-xl bg-slate-50 p-4">
+            <p className="whitespace-pre-wrap text-sm text-slate-600">
+              {selectedCleaner.notes ||
+                "No internal notes registered."}
+            </p>
+          </div>
+
+          <p className="mt-2 text-xs text-slate-400">
+            Only managers can view these notes.
+          </p>
+        </div>
+
       </div>
+
+     {/* Footer */}
+<div className="flex gap-3 border-t border-slate-200 p-6">
+  <button
+    type="button"
+    onClick={() => setSelectedCleanerId(null)}
+    className="flex-1 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+  >
+    Close
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setEditCleanerError("")
+      setEditingCleaner(selectedCleaner)
+    }}
+    className="flex-1 rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
+  >
+    Edit cleaner
+  </button>
+</div>
+
+    </aside>
+  </div>
+)}
+
+{editingCleaner && manager && (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+    <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-xl">
+
+      <div className="flex items-center justify-between border-b border-slate-200 p-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Edit cleaner
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Update cleaner information and status.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setEditingCleaner(null)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+      </div>
+
+      <form
+        className="space-y-5 p-6"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setEditCleanerError("")
+
+          const form = new FormData(event.currentTarget)
+
+          startTransition(async () => {
+            try {
+              const result = await updateCleanerAction({
+  id: editingCleaner.id,
+  name: String(form.get("name") || ""),
+  email: editingCleaner.email,
+  phone: String(form.get("phone") || ""),
+  notes: String(form.get("notes") || ""),
+  isActive: form.get("status") === "active",
+})
+
+              if (!result.ok) {
+                setEditCleanerError(
+                  result.error || "Could not update cleaner."
+                )
+                return
+              }
+
+              setEditingCleaner(null)
+              router.refresh()
+            } catch {
+              setEditCleanerError(
+                "An unexpected error occurred."
+              )
+            }
+          })
+        }}
+      >
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Full name
+          </label>
+          <input
+            required
+            name="name"
+            defaultValue={editingCleaner.name}
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Email address
+          </label>
+          <input
+            disabled
+            value={editingCleaner.email}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500"
+          />
+          <p className="mt-2 text-xs text-slate-400">
+            Email is linked to the cleaner's login account.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Phone number
+          </label>
+          <input
+            name="phone"
+            type="tel"
+            defaultValue={editingCleaner.phone ?? ""}
+            placeholder="0400 000 000"
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Status
+          </label>
+          <select
+            name="status"
+            defaultValue={
+              editingCleaner.isActive ? "active" : "inactive"
+            }
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Internal notes
+          </label>
+          <textarea
+            name="notes"
+            rows={4}
+            defaultValue={editingCleaner.notes ?? ""}
+            placeholder="Add internal notes about this cleaner..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+        {editCleanerError && (
+          <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
+            {editCleanerError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setEditingCleaner(null)}
+            className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {pending ? "Saving..." : "Save changes"}
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+)}
 
       {newJob && (
         <NewJobModal
-          cleaners={cleaners}
+          cleaners={cleaners.filter(
+  (cleaner) => cleaner.isActive === true
+)}
           clients={clients}
           pending={pending}
           close={() => setNewJob(false)}

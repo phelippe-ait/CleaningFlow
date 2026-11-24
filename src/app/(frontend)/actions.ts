@@ -50,6 +50,132 @@ export async function createCleanerAction(data: { name: string; email: string; p
   return { ok: false, error: `The cleaner profile could not be created: ${profileError.message}` }
 }
 
+export async function updateCleanerAction(data: {
+  id: string
+  name: string
+  email: string
+  phone?: string
+  notes?: string
+  isActive: boolean
+}): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return {
+      ok: false,
+      error: "Manager access required.",
+    }
+  }
+
+  const name = data.name.trim()
+  const email = data.email.trim().toLowerCase()
+
+  if (name.length < 2) {
+    return {
+      ok: false,
+      error: "Please enter the cleaner's full name.",
+    }
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return {
+      ok: false,
+      error: "Please enter a valid email address.",
+    }
+  }
+
+  if (typeof data.isActive !== "boolean") {
+    return {
+      ok: false,
+      error: "Invalid account status.",
+    }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    // Verify that the account belongs to a cleaner
+    const { data: cleaner, error: cleanerError } = await admin
+      .from("profiles")
+      .select("id, role")
+      .eq("id", data.id)
+      .eq("role", "cleaner")
+      .single()
+
+    if (cleanerError || !cleaner) {
+      return {
+        ok: false,
+        error: "Cleaner not found.",
+      }
+    }
+
+    // Update authentication information
+    const { error: authError } =
+      await admin.auth.admin.updateUserById(data.id, {
+        email,
+        user_metadata: {
+          full_name: name,
+        },
+      })
+
+    if (authError) {
+      return {
+        ok: false,
+        error: authError.message,
+      }
+    }
+
+    // Update cleaner profile
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({
+        full_name: name,
+        phone: data.phone?.trim() || null,
+        is_active: data.isActive,
+      })
+      .eq("id", data.id)
+      .eq("role", "cleaner")
+      .select("id")
+      .single()
+
+    if (profileError) {
+      return {
+        ok: false,
+        error: `Account updated, but profile update failed: ${profileError.message}`,
+      }
+    }
+
+    // Save private manager notes
+    const { error: notesError } = await admin
+      .from("cleaner_notes")
+      .upsert(
+        {
+          cleaner_id: data.id,
+          notes: data.notes?.trim() || null,
+        },
+        {
+          onConflict: "cleaner_id",
+        }
+      )
+
+    if (notesError) {
+      return {
+        ok: false,
+        error: `Profile updated, but notes could not be saved: ${notesError.message}`,
+      }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error("UPDATE CLEANER ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not complete the cleaner update. Please check the saved information.",
+    }
+  }
+}
+
 export async function updateJobStatusAction(jobId: string, status: "scheduled" | "accepted" | "in-progress" | "completed"): Promise<ActionResult> {
   const user = await appAuth.currentUser()
   if (!user) return { ok: false, error: "Your session has expired." }
@@ -582,7 +708,20 @@ export async function createJobAction(data: {
 
   try {
     const admin = createAdminClient()
+const { data: cleaner, error: cleanerError } = await admin
+  .from("profiles")
+  .select("id")
+  .eq("id", data.cleaner)
+  .eq("role", "cleaner")
+  .eq("is_active", true)
+  .single()
 
+if (cleanerError || !cleaner) {
+  return {
+    ok: false,
+    error: "The selected cleaner is unavailable or inactive.",
+  }
+}
     const { data: client, error: clientError } = await admin
       .from("clients")
       .select("id")

@@ -1,7 +1,7 @@
 import { appAuth } from "@/lib/app-auth"
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server"
 import { AuthScreen, Dashboard } from "./CleanFlowApp"
-
+import { createAdminClient } from "@/lib/supabase/admin"
 export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
@@ -34,7 +34,7 @@ status, instructions, estimated_earnings,
       isManager
         ? supabase
             .from("profiles")
-            .select("id, full_name")
+            .select("id, full_name, phone, is_active, created_at")
             .eq("role", "cleaner")
             .order("full_name")
         : Promise.resolve({ data: [], error: null }),
@@ -88,6 +88,46 @@ const archivedJobIds = new Set(
   if (jobsResult.error || cleanersResult.error || clientsResult.error || propertiesResult.error) {
     throw new Error("Could not load the CleanFlow workspace.")
   }
+
+const cleanerEmails = new Map<string, string>()
+const cleanerNotes = new Map<string, string | null>()
+
+if (isManager) {
+  const admin = createAdminClient()
+
+  const cleanerIds = (cleanersResult.data ?? []).map(
+    (cleaner) => cleaner.id
+  )
+
+  if (cleanerIds.length > 0) {
+    await Promise.all(
+      cleanerIds.map(async (id) => {
+        const { data, error } =
+          await admin.auth.admin.getUserById(id)
+
+        if (error) {
+          console.error("Could not load cleaner email:", error)
+          return
+        }
+
+        cleanerEmails.set(id, data.user?.email ?? "")
+      })
+    )
+
+    const { data: notesData, error: notesError } = await admin
+      .from("cleaner_notes")
+      .select("cleaner_id, notes")
+      .in("cleaner_id", cleanerIds)
+
+    if (notesError) {
+      throw new Error("Could not load cleaner notes.")
+    }
+
+    for (const item of notesData ?? []) {
+      cleanerNotes.set(item.cleaner_id, item.notes)
+    }
+  }
+}
 
   const one = <T,>(value: T | T[] | null): T | null =>
     Array.isArray(value) ? value[0] ?? null : value
@@ -145,10 +185,14 @@ durationMinutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_
       }}
       jobs={jobs}
       cleaners={(cleanersResult.data ?? []).map((cleaner) => ({
-        id: cleaner.id,
-        name: cleaner.full_name,
-        email: "",
-      }))}
+  id: cleaner.id,
+  name: cleaner.full_name,
+  email: cleanerEmails.get(cleaner.id) ?? "",
+  phone: cleaner.phone,
+  isActive: cleaner.is_active,
+  createdAt: cleaner.created_at,
+  notes: cleanerNotes.get(cleaner.id) ?? null,
+}))}
       clients={clientsResult.data ?? []}
       clientCount={clientsResult.count ?? 0}
       propertyCount={propertiesResult.count ?? 0}

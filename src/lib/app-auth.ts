@@ -16,11 +16,14 @@ export async function currentUser(): Promise<AppUser | null> {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, full_name, role")
+    .select("id, full_name, role, is_active")
     .eq("id", auth.user.id)
     .maybeSingle()
 
   if (profileError || !profile || !["manager", "cleaner"].includes(profile.role)) return null
+  if (profile.role === "cleaner" && profile.is_active !== true) {
+  return null
+}
   return { id: profile.id, name: profile.full_name, email: auth.user.email, role: profile.role as AppUser["role"] }
 }
 
@@ -31,7 +34,7 @@ export async function login(email: string, password: string) {
   const user = await currentUser()
   if (!user) {
     await supabase.auth.signOut()
-    throw new Error("No CleanFlow profile is provisioned for this account.")
+    throw new Error("Your account is inactive or unavailable. Please contact your manager.")
   }
   return user
 }
