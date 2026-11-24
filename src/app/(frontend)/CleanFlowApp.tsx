@@ -12,6 +12,12 @@ import { useRouter } from "next/navigation"
 import {
   createCleanerAction,
   createJobAction,
+  createClientAction,
+  updateClientAction,
+  deleteClientAction,
+  createPropertyAction,
+  updatePropertyAction,
+  deletePropertyAction,
   loginAction,
   logoutAction,
   updateJobStatusAction,
@@ -49,6 +55,32 @@ durationMinutes: number
   }[] | null
 }
 
+type Property = {
+  id: string
+  property_name: string | null
+  address_line1: string
+  address_line2: string | null
+  suburb: string
+  state: string
+  postcode: string
+  property_type: string
+  access_instructions: string | null
+  cleaning_instructions: string | null
+  is_active: boolean
+}
+
+type Client = {
+  id: string
+  full_name: string
+  email: string | null
+  phone: string | null
+  notes: string | null
+  is_active: boolean
+  created_at: string
+  properties: Property[]
+}
+
+
 type DashboardProps = {
   user: {
     id: string
@@ -58,6 +90,7 @@ type DashboardProps = {
   }
   jobs: Job[]
   cleaners: Cleaner[]
+  clients: Client[]
   clientCount: number
   propertyCount: number
 }
@@ -306,12 +339,45 @@ export function Dashboard({
   user,
   jobs,
   cleaners,
+  clients,
   clientCount,
   propertyCount,
 }: DashboardProps) {
   const router = useRouter()
   const [tab, setTab] = useState("Overview")
   const [query, setQuery] = useState("")
+  const [clientSearch, setClientSearch] = useState("")
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+
+const [expandedPropertyId, setExpandedPropertyId] = useState<string | null>(null)
+  const [newClient, setNewClient] = useState(false)
+const [clientError, setClientError] = useState("")
+const [editingClient, setEditingClient] = useState<
+  DashboardProps["clients"][number] | null
+>(null)
+
+const [deletingClient, setDeletingClient] = useState<
+  DashboardProps["clients"][number] | null
+>(null)
+
+const [deleteClientError, setDeleteClientError] = useState("")
+const [propertyClient, setPropertyClient] = useState<
+  DashboardProps["clients"][number] | null
+>(null)
+
+const [propertyError, setPropertyError] = useState("")
+const [editingProperty, setEditingProperty] = useState<
+  DashboardProps["clients"][number]["properties"][number] | null
+>(null)
+
+const [deletingProperty, setDeletingProperty] = useState<
+  DashboardProps["clients"][number]["properties"][number] | null
+>(null)
+
+const [deletePropertyError, setDeletePropertyError] = useState("")
+const [clientFilter, setClientFilter] = useState<
+  "all" | "active" | "inactive"
+>("all")
   const [mobileNav, setMobileNav] = useState(false)
   const [newJob, setNewJob] = useState(false)
   const [newCleaner, setNewCleaner] = useState(false)
@@ -332,6 +398,36 @@ const [earningsTo, setEarningsTo] = useState("")
   "all" | "active" | "completed"
 >("all")
   const manager = user.role === "manager"
+const selectedClient = clients.find(
+  (client) => client.id === selectedClientId
+) ?? null
+  const filteredClients = clients.filter((client) => {
+  const search = clientSearch.trim().toLowerCase()
+
+  const searchableText = [
+    client.full_name,
+    client.email,
+    client.phone,
+    ...client.properties.map((property) =>
+      [
+        property.address_line1,
+        property.address_line2,
+        property.suburb,
+        property.state,
+        property.postcode,
+      ].filter(Boolean).join(" ")
+    ),
+  ].filter(Boolean).join(" ").toLowerCase()
+
+  const matchesSearch = searchableText.includes(search)
+
+  const matchesStatus =
+    clientFilter === "all" ||
+    (clientFilter === "active" && client.is_active) ||
+    (clientFilter === "inactive" && !client.is_active)
+
+  return matchesSearch && matchesStatus
+})
 
   const filtered = useMemo(
     () =>
@@ -1054,13 +1150,1085 @@ const filteredEarnings = filteredEarningsJobs.reduce(
   </div>
 )}
 
-          {tab === "Clients" && (
-            <EmptyPanel
-              icon="users"
-              title={`${clientCount} clients in your workspace`}
-              text="Client profiles and their contact details are managed securely in Payload Admin."
-            />
+{selectedClient && manager && tab === "Clients" && (
+  <div className="fixed inset-0 z-40 flex justify-end">
+
+    <div
+      className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+      onClick={() => setSelectedClientId(null)}
+    />
+
+    <aside className="relative flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
+
+      <div className="flex items-center justify-between border-b border-slate-200 p-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            Client details
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Manage client information and properties.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setSelectedClientId(null)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-6 overflow-y-auto p-6">
+
+        <div className="flex items-center gap-4">
+          <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-teal-50 text-2xl font-bold text-teal-700">
+            {selectedClient.full_name.charAt(0).toUpperCase()}
+          </div>
+
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">
+              {selectedClient.full_name}
+            </h3>
+
+            <span className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold ${
+              selectedClient.is_active
+                ? "bg-teal-50 text-teal-700"
+                : "bg-slate-100 text-slate-500"
+            }`}>
+              {selectedClient.is_active ? "Active" : "Inactive"}
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 p-5">
+          <h3 className="mb-4 font-semibold text-slate-900">
+            Contact information
+          </h3>
+
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Email address
+              </p>
+              <p className="mt-1 text-sm text-slate-900">
+                {selectedClient.email || "Not registered"}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-slate-500">
+                Phone number
+              </p>
+              <p className="mt-1 text-sm text-slate-900">
+                {selectedClient.phone || "Not registered"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+            <div className="rounded-2xl border border-slate-200 p-5">
+
+  <div className="mb-4 flex items-center justify-between gap-3">
+    <h3 className="font-semibold text-slate-900">
+      Properties ({selectedClient.properties.length})
+    </h3>
+
+    <button
+      type="button"
+      onClick={() => {
+  setEditingProperty(null)
+  setPropertyError("")
+  setPropertyClient(selectedClient)
+}}
+      className="flex items-center gap-1.5 rounded-lg border border-teal-200 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-50"
+    >
+      <Icon name="plus" className="size-4" />
+      Add property
+    </button>
+  </div>
+
+  {selectedClient.properties.length === 0 ? (
+    <div className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">
+      No properties registered yet.
+    </div>
+  ) : (
+    <div className="space-y-3">
+
+      {selectedClient.properties.map((property) => (
+        <div
+          key={property.id}
+          className="overflow-hidden rounded-xl border border-slate-200"
+        >
+
+          <button
+            type="button"
+            aria-expanded={expandedPropertyId === property.id}
+            onClick={() =>
+              setExpandedPropertyId(
+                expandedPropertyId === property.id
+                  ? null
+                  : property.id
+              )
+            }
+            className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-slate-50"
+          >
+
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <Icon name="pin" className="size-5" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-900">
+                {property.property_name || "Property"}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {property.address_line1}, {property.suburb}
+              </p>
+            </div>
+
+            <span className="text-lg text-slate-400">
+              {expandedPropertyId === property.id ? "−" : "+"}
+            </span>
+
+          </button>
+
+          {expandedPropertyId === property.id && (
+            <div className="space-y-4 border-t border-slate-200 bg-slate-50 p-4">
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-medium capitalize text-slate-600">
+                  {property.property_type}
+                </span>
+
+                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  property.is_active
+                    ? "bg-teal-100 text-teal-700"
+                    : "bg-slate-200 text-slate-500"
+                }`}>
+                  {property.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500">
+                  Full address
+                </p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {[
+                    property.address_line1,
+                    property.address_line2,
+                    property.suburb,
+                    property.state,
+                    property.postcode,
+                  ].filter(Boolean).join(", ")}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500">
+                  Access instructions
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                  {property.access_instructions || "No instructions provided."}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-slate-500">
+                  Cleaning instructions
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                  {property.cleaning_instructions || "No instructions provided."}
+                </p>
+              </div>
+
+              <div className="flex justify-between gap-2 border-t border-slate-200 pt-4">
+
+  <button
+    type="button"
+    onClick={() => {
+      setDeletePropertyError("")
+      setDeletingProperty(property)
+    }}
+    className="rounded-lg border border-red-200 bg-white px-4 py-2 text-xs font-semibold text-red-600 transition hover:border-red-500 hover:bg-red-50"
+  >
+    Delete property
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setEditingProperty(property)
+      setPropertyError("")
+      setPropertyClient(selectedClient)
+    }}
+    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-teal-500 hover:text-teal-700"
+  >
+    Edit property
+  </button>
+
+</div>
+
+            </div>
           )}
+
+        </div>
+      ))}
+
+    </div>
+  )}
+
+</div>
+
+        <div className="rounded-2xl border border-slate-200 p-5">
+          <h3 className="mb-3 font-semibold text-slate-900">
+            Client notes
+          </h3>
+
+          <p className="whitespace-pre-wrap text-sm text-slate-600">
+            {selectedClient.notes || "No additional notes."}
+          </p>
+        </div>
+
+      </div>
+<div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white p-6">
+
+  <button
+    type="button"
+    onClick={() => {
+      setDeleteClientError("")
+      setDeletingClient(selectedClient)
+    }}
+    className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 hover:border-red-500"
+  >
+    Delete client
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setEditingClient(selectedClient)
+      setClientError("")
+      setNewClient(true)
+    }}
+    className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
+  >
+    Edit client
+  </button>
+
+</div>
+    </aside>
+  </div>
+)}
+
+{propertyClient && manager && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+    <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-xl">
+
+      <div className="flex items-center justify-between border-b border-slate-100 p-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+            {editingProperty ? "Edit property" : "Add property"}
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {editingProperty
+  ? "Update the information for this property."
+  : "Register a new property for this client."}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setPropertyClient(null)}
+          disabled={pending}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+      </div>
+
+      <form
+        className="space-y-5 p-6"
+        onSubmit={(event) => {
+          event.preventDefault()
+          setPropertyError("")
+
+          const form = new FormData(event.currentTarget)
+
+          const propertyData = {
+            clientId: propertyClient.id,
+            propertyName: String(form.get("propertyName") || ""),
+            addressLine1: String(form.get("addressLine1") || ""),
+            addressLine2: String(form.get("addressLine2") || ""),
+            suburb: String(form.get("suburb") || ""),
+            state: String(form.get("state") || ""),
+            postcode: String(form.get("postcode") || ""),
+            propertyType: String(form.get("propertyType") || ""),
+            accessInstructions: String(form.get("accessInstructions") || ""),
+            cleaningInstructions: String(form.get("cleaningInstructions") || ""),
+            isActive: form.has("isActive"),
+          }
+
+          startTransition(async () => {
+            try {
+              const result = editingProperty
+  ? await updatePropertyAction({
+      ...propertyData,
+      propertyId: editingProperty.id,
+    })
+  : await createPropertyAction(propertyData)
+
+              if (!result.ok) {
+                setPropertyError(
+                  result.error || "Could not create property."
+                )
+                return
+              }
+
+              setPropertyClient(null)
+setEditingProperty(null)
+router.refresh()
+            } catch {
+              setPropertyError("An unexpected error occurred.")
+            }
+          })
+        }}
+      >
+
+        <div className="rounded-xl bg-teal-50 p-4">
+          <p className="text-xs font-medium text-teal-600">
+            Selected client
+          </p>
+          <p className="mt-1 font-semibold text-teal-800">
+            {propertyClient.full_name}
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Property name
+          </label>
+          <input
+            name="propertyName"
+            placeholder="Main house, Office, Apartment..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+            defaultValue={editingProperty?.property_name ?? ""}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Address line 1 *
+          </label>
+          <input
+            name="addressLine1"
+            required
+            placeholder="Street address"
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+            defaultValue={editingProperty?.address_line1 ?? ""}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Address line 2
+          </label>
+          <input
+            name="addressLine2"
+            placeholder="Unit, apartment, suite..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+            defaultValue={editingProperty?.address_line2 ?? ""}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Suburb *
+          </label>
+          <input
+            name="suburb"
+            required
+            placeholder="Ryde"
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+            defaultValue={editingProperty?.suburb ?? ""}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-2 block text-sm font-semibold">
+              State *
+            </label>
+            <select
+              name="state"
+              
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+              defaultValue={editingProperty?.state ?? "NSW"}
+            >
+              {["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"].map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold">
+              Postcode *
+            </label>
+            <input
+              name="postcode"
+              required
+              inputMode="numeric"
+              pattern="[0-9]{4}"
+              maxLength={4}
+              placeholder="2112"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+              	defaultValue={editingProperty?.postcode ?? ""}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Property type
+          </label>
+          <select
+            name="propertyType"
+          
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+            	defaultValue={editingProperty?.property_type ?? "house"}
+          >
+            <option value="house">House</option>
+            <option value="apartment">Apartment</option>
+            <option value="townhouse">Townhouse</option>
+            <option value="office">Office</option>
+            <option value="commercial">Commercial</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Access instructions
+          </label>
+          <textarea
+            name="accessInstructions"
+            rows={3}
+            defaultValue={editingProperty?.access_instructions ?? ""}
+            placeholder="Keys, parking, access instructions..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Cleaning instructions
+          </label>
+          <textarea
+            name="cleaningInstructions"
+            rows={3}
+            	defaultValue={editingProperty?.cleaning_instructions ?? ""}
+            placeholder="Specific cleaning requirements..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+          />
+        </div>
+
+
+{editingProperty && (
+  <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+
+    <div>
+      <p className="text-sm font-semibold text-slate-900">
+        Active property
+      </p>
+
+      <p className="mt-1 text-xs text-slate-500">
+        Deactivate this property without deleting its history.
+      </p>
+    </div>
+
+    <input
+      type="checkbox"
+      name="isActive"
+      defaultChecked={editingProperty.is_active}
+      className="size-5 shrink-0 cursor-pointer accent-teal-600"
+    />
+
+  </label>
+)}
+        {propertyError && (
+          <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
+            {propertyError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+  setPropertyClient(null)
+  setEditingProperty(null)
+}}
+            className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {pending
+  ? "Saving..."
+  : editingProperty
+    ? "Save changes"
+    : "Add property"}
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+)}
+
+
+{deletingProperty && manager && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+
+    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+
+      <div className="mb-5 flex items-center justify-between">
+        <h2 className="text-xl font-bold text-slate-900">
+          Delete property
+        </h2>
+
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setDeletingProperty(null)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+      </div>
+
+      <p className="text-sm text-slate-600">
+        Are you sure you want to delete this property?
+      </p>
+
+      <div className="my-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="font-semibold text-slate-900">
+          {deletingProperty.property_name || "Property"}
+        </p>
+
+        <p className="mt-1 text-sm text-slate-500">
+          {deletingProperty.address_line1},{" "}
+          {deletingProperty.suburb}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        This action cannot be undone. Properties with associated
+        jobs cannot be deleted and should be deactivated instead.
+      </div>
+
+      {deletePropertyError && (
+        <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">
+          {deletePropertyError}
+        </div>
+      )}
+
+      <div className="mt-6 flex justify-end gap-3">
+
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => setDeletingProperty(null)}
+          className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            setDeletePropertyError("")
+
+            startTransition(async () => {
+              try {
+                const result = await deletePropertyAction(
+                  deletingProperty.id
+                )
+
+                if (!result.ok) {
+                  setDeletePropertyError(
+                    result.error || "Could not delete property."
+                  )
+                  return
+                }
+
+                setDeletingProperty(null)
+                setExpandedPropertyId(null)
+                router.refresh()
+
+              } catch {
+                setDeletePropertyError(
+                  "An unexpected error occurred."
+                )
+              }
+            })
+          }}
+          className="rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          {pending ? "Deleting..." : "Delete property"}
+        </button>
+
+      </div>
+
+    </div>
+  </div>
+)}
+
+{deletingClient && manager && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+
+      <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-red-100">
+        <span className="text-2xl font-bold text-red-600">!</span>
+      </div>
+
+      <h2 className="text-xl font-bold text-slate-900">
+        Delete client?
+      </h2>
+
+      <p className="mt-3 text-sm text-slate-600">
+        Are you sure you want to delete{" "}
+        <strong>{deletingClient.full_name}</strong>?
+      </p>
+
+      <p className="mt-2 text-sm text-slate-500">
+        This action is permanent and cannot be undone.
+      </p>
+
+      {deletingClient.properties.length > 0 && (
+        <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+          This client has registered properties and cannot
+          be deleted. Please deactivate the client instead.
+        </div>
+      )}
+
+      {deleteClientError && (
+        <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">
+          {deleteClientError}
+        </div>
+      )}
+
+      <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-5">
+
+        <button
+          type="button"
+          onClick={() => setDeletingClient(null)}
+          className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+
+        <button
+  type="button"
+  disabled={deletingClient.properties.length > 0 || pending}
+  onClick={() => {
+    setDeleteClientError("")
+
+    startTransition(async () => {
+      try {
+        const result = await deleteClientAction(deletingClient.id)
+
+        if (!result.ok) {
+          setDeleteClientError(
+            result.error || "Could not delete client."
+          )
+          return
+        }
+
+        setDeletingClient(null)
+        router.refresh()
+      } catch {
+        setDeleteClientError("An unexpected error occurred.")
+      }
+    })
+  }}
+  className="rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+>
+  {pending ? "Deleting..." : "Delete client"}
+</button>
+
+      </div>
+    </div>
+  </div>
+)}
+
+{newClient && manager && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+    <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+
+      <div className="flex items-center justify-between border-b border-slate-100 p-6">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">
+  {editingClient ? "Edit client" : "Add client"}
+</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {editingClient
+  ? "Update client information."
+  : "Create a new client profile."}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setNewClient(false)}
+          className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+        >
+          <Icon name="close" className="size-5" />
+        </button>
+      </div>
+
+      <form
+        className="space-y-5 p-6"
+        onSubmit={async (event) => {
+          event.preventDefault()
+          setClientError("")
+
+          const form = new FormData(event.currentTarget)
+
+          try {
+            const clientData = {
+  fullName: String(form.get("fullName") || ""),
+  email: String(form.get("email") || ""),
+  phone: String(form.get("phone") || ""),
+  notes: String(form.get("notes") || ""),
+  isActive: form.get("status") === "active",
+}
+
+const result = editingClient
+  ? await updateClientAction({
+      id: editingClient.id,
+      ...clientData,
+    })
+  : await createClientAction(clientData)
+
+            if (!result.ok) {
+              setClientError(result.error || "Could not create client.")
+              return
+            }
+
+            setNewClient(false)
+setEditingClient(null)
+router.refresh()
+          } catch {
+            setClientError("An unexpected error occurred.")
+          }
+        }}
+      >
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Full name *
+          </label>
+          <input
+  name="fullName"
+  defaultValue={editingClient?.full_name ?? ""}
+  required
+  placeholder="Enter client's full name"
+  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+/>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Email address
+          </label>
+          <input
+  name="email"
+  defaultValue={editingClient?.email ?? ""}
+  type="email"
+  placeholder="client@example.com"
+  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+/>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Phone number
+          </label>
+          <input
+  name="phone"
+  defaultValue={editingClient?.phone ?? ""}
+  type="tel"
+  placeholder="04XX XXX XXX"
+  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+/>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Client notes
+          </label>
+          <textarea
+  name="notes"
+  defaultValue={editingClient?.notes ?? ""}
+  rows={3}
+  placeholder="Additional information about this client..."
+  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-teal-500"
+/>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-semibold">
+            Status
+          </label>
+          <select
+  name="status"
+  defaultValue={editingClient?.is_active === false ? "inactive" : "active"}
+  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-teal-500"
+>
+  <option value="active">Active</option>
+  <option value="inactive">Inactive</option>
+</select>
+        </div>
+
+        {clientError && (
+          <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600">
+            {clientError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+          <button
+            type="button"
+            onClick={() => setNewClient(false)}
+            className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-700"
+          >
+            {editingClient ? "Save changes" : "Create client"}
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+)}
+
+          {tab === "Clients" && manager && (
+  <div className="space-y-6">
+
+    <div className="grid gap-4 sm:grid-cols-3">
+      <Metric
+        icon="users"
+        label="Total clients"
+        value={clients.length}
+        detail="Registered clients"
+        accent="teal"
+      />
+
+      <Metric
+        icon="check"
+        label="Active clients"
+        value={clients.filter((client) => client.is_active).length}
+        detail="Currently active"
+        accent="blue"
+      />
+
+      <Metric
+        icon="pin"
+        label="Properties"
+        value={propertyCount}
+        detail="Registered properties"
+        accent="violet"
+      />
+    </div>
+
+    <div className="rounded-2xl border border-slate-200 bg-white">
+      <div className="border-b border-slate-100 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <h2 className="text-lg font-semibold">
+      Client directory
+    </h2>
+
+    <p className="mt-1 text-sm text-slate-500">
+      Manage your clients and their properties.
+    </p>
+  </div>
+
+  <button
+    type="button"
+    onClick={() => {
+  setEditingClient(null)
+  setClientError("")
+  setNewClient(true)
+}}
+    className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-700"
+  >
+    <Icon name="plus" className="size-4" />
+    Add client
+  </button>
+</div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+
+  <div className="relative flex-1">
+    <Icon
+      name="search"
+      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+    />
+
+    <input
+      type="text"
+      placeholder="Search clients..."
+      value={clientSearch}
+      onChange={(event) => setClientSearch(event.target.value)}
+      className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+    />
+  </div>
+
+  <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+    {(["all", "active", "inactive"] as const).map((filter) => (
+      <button
+        key={filter}
+        type="button"
+        onClick={() => setClientFilter(filter)}
+        className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+          clientFilter === filter
+            ? "bg-slate-950 text-white"
+            : "text-slate-500 hover:bg-slate-50"
+        }`}
+      >
+        {filter === "all"
+          ? "All clients"
+          : filter === "active"
+            ? "Active"
+            : "Inactive"}
+      </button>
+    ))}
+  </div>
+
+</div>
+
+<p className="mt-4 text-xs font-medium text-slate-500">
+  {filteredClients.length}{" "}
+  {filteredClients.length === 1 ? "client" : "clients"} found
+</p>
+
+      </div>
+
+     {filteredClients.length === 0 ? (
+  <div className="p-12 text-center text-slate-500">
+    No clients match your search.
+  </div>
+) : (
+  <div className="overflow-x-auto">
+    <table className="w-full text-left text-sm">
+
+      <thead className="border-b border-slate-200 bg-slate-50">
+        <tr>
+          <th className="px-6 py-4 font-semibold text-slate-500">
+            Client
+          </th>
+          <th className="px-6 py-4 font-semibold text-slate-500">
+            Phone
+          </th>
+          <th className="px-6 py-4 text-center font-semibold text-slate-500">
+            Properties
+          </th>
+          <th className="px-6 py-4 font-semibold text-slate-500">
+            Status
+          </th>
+          <th className="px-6 py-4 text-right font-semibold text-slate-500">
+            Actions
+          </th>
+        </tr>
+      </thead>
+
+      <tbody className="divide-y divide-slate-100">
+        {filteredClients.map((client) => (
+          <tr
+            key={client.id}
+            className="transition hover:bg-slate-50"
+          >
+
+            <td className="px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 font-bold text-teal-700">
+                  {client.full_name.charAt(0).toUpperCase()}
+                </div>
+
+                <div>
+                  <p className="font-semibold text-slate-900">
+                    {client.full_name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {client.email || "No email registered"}
+                  </p>
+                </div>
+              </div>
+            </td>
+
+            <td className="whitespace-nowrap px-6 py-4 text-slate-600">
+              {client.phone || "—"}
+            </td>
+
+            <td className="px-6 py-4 text-center">
+              <span className="rounded-lg bg-slate-100 px-3 py-1 font-semibold text-slate-600">
+                {client.properties.length}
+              </span>
+            </td>
+
+            <td className="px-6 py-4">
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                client.is_active
+                  ? "bg-teal-50 text-teal-700"
+                  : "bg-slate-100 text-slate-500"
+              }`}>
+                {client.is_active ? "Active" : "Inactive"}
+              </span>
+            </td>
+
+            <td className="px-6 py-4 text-right">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedClientId(client.id)
+                  setExpandedPropertyId(null)
+                }}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-700"
+              >
+                View details
+              </button>
+            </td>
+
+          </tr>
+        ))}
+      </tbody>
+
+    </table>
+  </div>
+)}
+    </div>
+  </div>
+)}
           {tab === "Cleaners" && (
             <div>
               <div className="mb-5 flex items-center justify-between">
@@ -1121,6 +2289,7 @@ const filteredEarnings = filteredEarningsJobs.reduce(
       {newJob && (
         <NewJobModal
           cleaners={cleaners}
+          clients={clients}
           pending={pending}
           close={() => setNewJob(false)}
           submit={(data) => {
@@ -2163,11 +3332,13 @@ function NewCleanerModal({
 
 function NewJobModal({
   cleaners,
+  clients,
   pending,
   close,
   submit,
 }: {
   cleaners: Cleaner[]
+  clients: DashboardProps["clients"]
   pending: boolean
   close: () => void
   submit: (data: Parameters<typeof createJobAction>[0]) => void
@@ -2181,6 +3352,25 @@ function NewJobModal({
 ])
 
 const [newChecklistTask, setNewChecklistTask] = useState("")
+
+const [selectedClientId, setSelectedClientId] = useState("")
+const [selectedPropertyId, setSelectedPropertyId] = useState("")
+
+const activeClients = clients.filter(
+  (client) => client.is_active
+)
+
+const selectedClient = activeClients.find(
+  (client) => client.id === selectedClientId
+)
+
+const activeProperties = (selectedClient?.properties ?? []).filter(
+  (property) => property.is_active
+)
+
+const selectedProperty = activeProperties.find(
+  (property) => property.id === selectedPropertyId
+)
 
 function addChecklistTask() {
   const task = newChecklistTask.trim()
@@ -2204,10 +3394,8 @@ function handleSubmit(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget)
     submit({
       title: String(data.get("title")),
-      clientName: String(data.get("clientName")),
-      serviceAddress: String(data.get("serviceAddress")),
-      suburb: String(data.get("suburb") ?? ""),
-      postcode: String(data.get("postcode") ?? ""),
+      clientId: String(data.get("clientId") ?? ""),
+propertyId: String(data.get("propertyId") ?? ""),
       cleaner: String(data.get("cleaner")),
       scheduledAt: String(data.get("scheduledAt")),
       durationMinutes: Number(data.get("durationMinutes")),
@@ -2248,28 +3436,95 @@ function handleSubmit(event: FormEvent<HTMLFormElement>) {
               name="title"
               placeholder="Standard home clean"
             />
-            <Field
-              label="Client name"
-              name="clientName"
-              placeholder="Sofia Bennett"
-            />
-            <label className="sm:col-span-2 block text-sm font-medium text-slate-700">
-              Service address
-              <input
-                required
-                name="serviceAddress"
-                placeholder="24 Harbour Street, Sydney"
-                className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-teal-500"
-              />
-            </label>
-            <Field label="Suburb" name="suburb" placeholder="Sydney" />
-            <Field
-              label="Postcode"
-              name="postcode"
-              inputMode="numeric"
-              pattern="[0-9]{4}"
-              placeholder="2000"
-            />
+           <label className="block text-sm font-medium text-slate-700">
+  Client
+  <select
+    required
+    name="clientId"
+    value={selectedClientId}
+    onChange={(event) => {
+      setSelectedClientId(event.target.value)
+      setSelectedPropertyId("")
+    }}
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-teal-500"
+  >
+    <option value="">Select a client</option>
+
+    {activeClients.map((client) => (
+      <option key={client.id} value={client.id}>
+        {client.full_name}
+      </option>
+    ))}
+  </select>
+</label>
+
+<label className="sm:col-span-2 block text-sm font-medium text-slate-700">
+  Property
+  <select
+    required
+    name="propertyId"
+    value={selectedPropertyId}
+    disabled={!selectedClientId}
+    onChange={(event) => {
+      setSelectedPropertyId(event.target.value)
+    }}
+    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-teal-500 disabled:bg-slate-100 disabled:text-slate-400"
+  >
+    <option value="">
+      {selectedClientId
+        ? "Select a property"
+        : "Select a client first"}
+    </option>
+
+    {activeProperties.map((property) => (
+      <option key={property.id} value={property.id}>
+        {property.property_name || "Property"} — {property.address_line1}, {property.suburb}
+      </option>
+    ))}
+  </select>
+</label>
+
+{activeClients.length === 0 && (
+  <div className="sm:col-span-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+    No active clients available. Register a client in the
+    Clients section first.
+  </div>
+)}
+
+{selectedClientId && activeProperties.length === 0 && (
+  <div className="sm:col-span-2 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+    This client has no active properties. Add or activate
+    a property in the Clients section first.
+  </div>
+)}
+
+{selectedProperty && (
+  <div className="sm:col-span-2 rounded-xl border border-teal-100 bg-teal-50 p-4">
+
+    <div className="flex items-center gap-2 text-teal-700">
+      <Icon name="pin" className="size-5" />
+
+      <p className="text-sm font-semibold">
+        Service address
+      </p>
+    </div>
+
+    <p className="mt-2 text-sm font-medium text-slate-800">
+      {[
+        selectedProperty.address_line1,
+        selectedProperty.address_line2,
+        selectedProperty.suburb,
+        selectedProperty.state,
+        selectedProperty.postcode,
+      ].filter(Boolean).join(", ")}
+    </p>
+
+    <p className="mt-1 text-xs capitalize text-slate-500">
+      {selectedProperty.property_type}
+    </p>
+
+  </div>
+)}
             <label className="block text-sm font-medium text-slate-700">
               Assign cleaner
               <select

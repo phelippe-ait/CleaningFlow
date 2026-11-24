@@ -39,8 +39,32 @@ status, instructions, estimated_earnings,
             .order("full_name")
         : Promise.resolve({ data: [], error: null }),
       isManager
-        ? supabase.from("clients").select("id", { count: "exact", head: true })
-        : Promise.resolve({ count: 0, error: null }),
+  ? supabase
+      .from("clients")
+      .select(`
+        id,
+        full_name,
+        email,
+        phone,
+        notes,
+        is_active,
+        created_at,
+        properties (
+          id,
+          property_name,
+          address_line1,
+          address_line2,
+          suburb,
+          state,
+          postcode,
+          property_type,
+          access_instructions,
+          cleaning_instructions,
+          is_active
+        )
+      `, { count: "exact" })
+      .order("full_name", { ascending: true })
+  : Promise.resolve({ data: [], count: 0, error: null }),
       isManager
         ? supabase.from("properties").select("id", { count: "exact", head: true })
         : Promise.resolve({ count: 0, error: null }),
@@ -125,6 +149,7 @@ durationMinutes: Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_
         name: cleaner.full_name,
         email: "",
       }))}
+      clients={clientsResult.data ?? []}
       clientCount={clientsResult.count ?? 0}
       propertyCount={propertiesResult.count ?? 0}
     />

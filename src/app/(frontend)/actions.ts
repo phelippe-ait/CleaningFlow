@@ -169,20 +169,448 @@ if (propertyError) {
   return { ok: true }
 }
 
-
-
-export async function createJobAction(data: { title: string; clientName: string; serviceAddress: string; suburb: string; postcode: string; cleaner: string; scheduledAt: string; durationMinutes: number; estimatedEarnings: number; instructions?: string; checklistTasks: string[] }): Promise<ActionResult> {
+export async function createClientAction(data: {
+  fullName: string
+  email?: string
+  phone?: string
+  notes?: string
+  isActive: boolean
+}): Promise<ActionResult> {
   const user = await appAuth.currentUser()
-  if (!user || user.role !== "manager") return { ok: false, error: "Manager access required." }
-  if (!data.title.trim() || !data.clientName.trim() || !data.serviceAddress.trim() || !data.suburb.trim() || !/^\d{4}$/.test(data.postcode.trim()) || !data.cleaner || !data.scheduledAt) return { ok: false, error: "Complete all required fields, including a four-digit postcode." }
-  const start = new Date(data.scheduledAt); const end = new Date(start.getTime() + Math.max(15, Number(data.durationMinutes)) * 60_000)
-  if (Number.isNaN(start.getTime())) return { ok: false, error: "Enter a valid scheduled time." }
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (!data.fullName.trim()) {
+    return { ok: false, error: "Client name is required." }
+  }
+
   try {
     const admin = createAdminClient()
-    const { data: client, error: clientError } = await admin.from("clients").insert({ full_name: data.clientName.trim() }).select("id").single()
-    if (clientError || !client) throw clientError ?? new Error("Could not create the client.")
-    const { data: property, error: propertyError } = await admin.from("properties").insert({ client_id: client.id, address_line1: data.serviceAddress.trim(), suburb: data.suburb.trim(), postcode: data.postcode.trim(), cleaning_instructions: data.instructions?.trim() || null }).select("id").single()
-    if (propertyError || !property) throw propertyError ?? new Error("Could not create the property.")
+
+    const { error } = await admin.from("clients").insert({
+      full_name: data.fullName.trim(),
+      email: data.email?.trim() || null,
+      phone: data.phone?.trim() || null,
+      notes: data.notes?.trim() || null,
+      is_active: data.isActive,
+    })
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error("CREATE CLIENT ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not create the client.",
+    }
+  }
+}
+
+export async function updateClientAction(data: {
+  id: string
+  fullName: string
+  email?: string
+  phone?: string
+  notes?: string
+  isActive: boolean
+}): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (!data.id || !data.fullName.trim()) {
+    return { ok: false, error: "Client name is required." }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { error } = await admin
+      .from("clients")
+      .update({
+        full_name: data.fullName.trim(),
+        email: data.email?.trim() || null,
+        phone: data.phone?.trim() || null,
+        notes: data.notes?.trim() || null,
+        is_active: data.isActive,
+      })
+      .eq("id", data.id)
+      .select("id")
+      .single()
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error("UPDATE CLIENT ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not update the client.",
+    }
+  }
+}
+
+
+export async function deleteClientAction(
+  clientId: string
+): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (!clientId) {
+    return { ok: false, error: "Invalid client." }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { count, error: propertyError } = await admin
+      .from("properties")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", clientId)
+
+    if (propertyError) {
+      return { ok: false, error: propertyError.message }
+    }
+
+    if (count === null || count > 0) {
+      return {
+        ok: false,
+        error: "Cannot delete a client with registered properties. Please deactivate the client instead.",
+      }
+    }
+
+    const { error } = await admin
+      .from("clients")
+      .delete()
+      .eq("id", clientId)
+      .select("id")
+      .single()
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error("DELETE CLIENT ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not delete the client.",
+    }
+  }
+}
+
+export async function deletePropertyAction(
+  propertyId: string
+): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (!propertyId) {
+    return { ok: false, error: "Invalid property." }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { count, error: countError } = await admin
+      .from("jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("property_id", propertyId)
+
+    if (countError || count === null) {
+      return {
+        ok: false,
+        error: "Could not verify associated jobs.",
+      }
+    }
+
+    if (count > 0) {
+      return {
+        ok: false,
+        error:
+          "This property has associated jobs and cannot be deleted. Deactivate it instead.",
+      }
+    }
+
+    const { data: deletedProperty, error } = await admin
+      .from("properties")
+      .delete()
+      .eq("id", propertyId)
+      .select("id")
+      .single()
+
+    if (error || !deletedProperty) {
+      return {
+        ok: false,
+        error: error?.message || "Property not found.",
+      }
+    }
+
+    return { ok: true }
+
+  } catch (error) {
+    console.error("DELETE PROPERTY ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not delete the property.",
+    }
+  }
+}
+
+export async function updatePropertyAction(data: {
+  propertyId: string
+  propertyName?: string
+  addressLine1: string
+  addressLine2?: string
+  suburb: string
+  state: string
+  postcode: string
+  propertyType: string
+  accessInstructions?: string
+  cleaningInstructions?: string
+  isActive: boolean
+}): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (
+    !data.propertyId ||
+    !data.addressLine1.trim() ||
+    !data.suburb.trim() ||
+    !data.state.trim() ||
+    !data.propertyType.trim() ||
+    !/^\d{4}$/.test(data.postcode.trim())
+  ) {
+    return {
+      ok: false,
+      error: "Complete all required address fields.",
+    }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { data: updatedProperty, error } = await admin
+      .from("properties")
+      .update({
+        property_name: data.propertyName?.trim() || null,
+        address_line1: data.addressLine1.trim(),
+        address_line2: data.addressLine2?.trim() || null,
+        suburb: data.suburb.trim(),
+        state: data.state.trim(),
+        postcode: data.postcode.trim(),
+        property_type: data.propertyType.trim(),
+        access_instructions:
+          data.accessInstructions?.trim() || null,
+        cleaning_instructions:
+          data.cleaningInstructions?.trim() || null,
+        is_active: data.isActive,
+      })
+      .eq("id", data.propertyId)
+      .select("id")
+      .single()
+
+    if (error || !updatedProperty) {
+      return {
+        ok: false,
+        error: error?.message || "Property not found.",
+      }
+    }
+
+    return { ok: true }
+
+  } catch (error) {
+    console.error("UPDATE PROPERTY ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not update the property.",
+    }
+  }
+}
+
+export async function createPropertyAction(data: {
+  clientId: string
+  propertyName?: string
+  addressLine1: string
+  addressLine2?: string
+  suburb: string
+  state: string
+  postcode: string
+  propertyType: string
+  accessInstructions?: string
+  cleaningInstructions?: string
+}): Promise<ActionResult> {
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return { ok: false, error: "Manager access required." }
+  }
+
+  if (
+    !data.clientId ||
+    !data.addressLine1.trim() ||
+    !data.suburb.trim() ||
+    !data.state.trim() ||
+    !data.propertyType.trim() ||
+    !/^\d{4}$/.test(data.postcode.trim())
+  ) {
+    return {
+      ok: false,
+      error: "Complete all required address fields.",
+    }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { error } = await admin
+      .from("properties")
+      .insert({
+        client_id: data.clientId,
+        property_name: data.propertyName?.trim() || null,
+        address_line1: data.addressLine1.trim(),
+        address_line2: data.addressLine2?.trim() || null,
+        suburb: data.suburb.trim(),
+        state: data.state.trim(),
+        postcode: data.postcode.trim(),
+        property_type: data.propertyType.trim(),
+        access_instructions:
+          data.accessInstructions?.trim() || null,
+        cleaning_instructions:
+          data.cleaningInstructions?.trim() || null,
+        is_active: true,
+      })
+
+    if (error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error("CREATE PROPERTY ERROR:", error)
+
+    return {
+      ok: false,
+      error: "Could not create the property.",
+    }
+  }
+}
+
+export async function createJobAction(data: {
+  title: string
+  clientId: string
+  propertyId: string
+  cleaner: string
+  scheduledAt: string
+  durationMinutes: number
+  estimatedEarnings: number
+  instructions?: string
+  checklistTasks: string[]
+}): Promise<ActionResult> {
+
+  const user = await appAuth.currentUser()
+
+  if (!user || user.role !== "manager") {
+    return {
+      ok: false,
+      error: "Manager access required.",
+    }
+  }
+
+  if (
+    !data.title.trim() ||
+    !data.clientId ||
+    !data.propertyId ||
+    !data.cleaner ||
+    !data.scheduledAt
+  ) {
+    return {
+      ok: false,
+      error: "Complete all required fields.",
+    }
+  }
+
+  const start = new Date(data.scheduledAt)
+
+  if (
+    Number.isNaN(start.getTime()) ||
+    !Number.isFinite(data.durationMinutes) ||
+    !Number.isFinite(data.estimatedEarnings)
+  ) {
+    return {
+      ok: false,
+      error: "Enter valid scheduling and earnings details.",
+    }
+  }
+
+  const end = new Date(
+    start.getTime() +
+    Math.max(15, Number(data.durationMinutes)) * 60_000
+  )
+
+  if (!data.checklistTasks.some((task) => task.trim().length > 0)) {
+    return {
+      ok: false,
+      error: "Add at least one checklist task.",
+    }
+  }
+
+  try {
+    const admin = createAdminClient()
+
+    const { data: client, error: clientError } = await admin
+      .from("clients")
+      .select("id")
+      .eq("id", data.clientId)
+      .eq("is_active", true)
+      .single()
+
+    if (clientError || !client) {
+      return {
+        ok: false,
+        error: "The selected client is unavailable or inactive.",
+      }
+    }
+
+    const { data: property, error: propertyError } = await admin
+      .from("properties")
+      .select("id")
+      .eq("id", data.propertyId)
+      .eq("client_id", client.id)
+      .eq("is_active", true)
+      .single()
+
+    if (propertyError || !property) {
+      return {
+        ok: false,
+        error: "The selected property is unavailable, inactive or does not belong to this client.",
+      }
+    }
     const { data: job, error: jobError } = await admin.from("jobs").insert({ title: data.title.trim(), property_id: property.id, cleaner_id: data.cleaner, scheduled_start: start.toISOString(), scheduled_end: end.toISOString(), estimated_earnings: Math.max(0, Number(data.estimatedEarnings)), instructions: data.instructions?.trim() || null }).select("id").single()
     if (jobError || !job) throw jobError ?? new Error("Could not create the job.")
     const tasks = data.checklistTasks
